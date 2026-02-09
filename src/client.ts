@@ -101,11 +101,6 @@ function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest):
 
   if (voiceSetting) {
     body.voice_setting = toSnakeCase(voiceSetting as unknown as Record<string, unknown>)
-    // voiceId -> voice_id mapping
-    const vs = body.voice_setting as Record<string, unknown>
-    if (vs.voice_id !== undefined) {
-      vs.voice_id = vs.voice_id
-    }
   }
 
   if (audioSetting) {
