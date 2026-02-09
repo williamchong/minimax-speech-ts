@@ -1,5 +1,10 @@
 # minimax-speech-ts
 
+[![npm version](https://img.shields.io/npm/v/minimax-speech-ts)](https://www.npmjs.com/package/minimax-speech-ts)
+[![CI](https://github.com/williamchong/minimax-speech-ts/actions/workflows/ci.yml/badge.svg)](https://github.com/williamchong/minimax-speech-ts/actions/workflows/ci.yml)
+[![npm downloads](https://img.shields.io/npm/dm/minimax-speech-ts)](https://www.npmjs.com/package/minimax-speech-ts)
+[![license](https://img.shields.io/npm/l/minimax-speech-ts)](https://github.com/williamchong/minimax-speech-ts/blob/master/LICENSE)
+
 TypeScript client for the [MiniMax Speech Synthesis (T2A) API](https://platform.minimax.io). [API Documentation](https://williamchong.github.io/minimax-speech-ts/)
 
 - Full API coverage: sync, streaming, async, voice cloning, voice design, voice management
