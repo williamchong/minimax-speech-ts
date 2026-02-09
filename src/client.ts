@@ -196,8 +196,8 @@ export class MiniMaxSpeech {
     return { ...json, baseResp: json.base_resp, traceId: json.trace_id } as unknown as T & { baseResp: RawBaseResp; traceId?: string }
   }
 
-  async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult>
   async synthesize(request: SynthesizeRequest & { outputFormat: 'url' }): Promise<SynthesizeUrlResult>
+  async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult>
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult | SynthesizeUrlResult> {
     validate([
       required(request.text, 'text'),
