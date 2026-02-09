@@ -1,3 +1,10 @@
+export class MiniMaxClientError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MiniMaxClientError'
+  }
+}
+
 export class MiniMaxError extends Error {
   statusCode: number
   statusMsg: string

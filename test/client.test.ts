@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MiniMaxSpeech } from '../src/client.js'
-import { MiniMaxError, MiniMaxAuthError, MiniMaxRateLimitError, MiniMaxValidationError } from '../src/errors.js'
+import { MiniMaxClientError, MiniMaxError, MiniMaxAuthError, MiniMaxRateLimitError, MiniMaxValidationError } from '../src/errors.js'
 import type { RawSynthesizeResponse, RawStreamChunk } from '../src/types.js'
 
 const mockFetch = vi.fn()
@@ -1004,16 +1004,31 @@ describe('MiniMaxSpeech', () => {
   })
 
   describe('client-side validation', () => {
+    it('should throw MiniMaxClientError which is not a MiniMaxError', async () => {
+      const client = createClient()
+      try {
+        await client.synthesize({
+          text: 'Test',
+          model: 'speech-01-hd',
+          voiceSetting: { voiceId: 'v1', emotion: 'happy' },
+        })
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxClientError)
+        expect(e).not.toBeInstanceOf(MiniMaxError)
+      }
+    })
+
     describe('emotion + model compatibility', () => {
       it('should reject any emotion with speech-01-* models', async () => {
         const client = createClient()
-        await expect(
-          client.synthesize({
-            text: 'Test',
-            model: 'speech-01-hd',
-            voiceSetting: { voiceId: 'v1', emotion: 'happy' },
-          }),
-        ).rejects.toThrow('Emotion is not supported with model "speech-01-hd"')
+        const err = client.synthesize({
+          text: 'Test',
+          model: 'speech-01-hd',
+          voiceSetting: { voiceId: 'v1', emotion: 'happy' },
+        })
+        await expect(err).rejects.toThrow(MiniMaxClientError)
+        await expect(err).rejects.toThrow('Emotion is not supported with model "speech-01-hd"')
         expect(mockFetch).not.toHaveBeenCalled()
       })
 
@@ -1185,23 +1200,23 @@ describe('MiniMaxSpeech', () => {
     describe('wav format validation', () => {
       it('should reject wav format in synthesizeStream', async () => {
         const client = createClient()
-        await expect(
-          client.synthesizeStream({
-            text: 'Test',
-            audioSetting: { format: 'wav' },
-          }),
-        ).rejects.toThrow('WAV format is not supported in streaming mode')
+        const err = client.synthesizeStream({
+          text: 'Test',
+          audioSetting: { format: 'wav' },
+        })
+        await expect(err).rejects.toThrow(MiniMaxClientError)
+        await expect(err).rejects.toThrow('WAV format is not supported in streaming mode')
         expect(mockFetch).not.toHaveBeenCalled()
       })
 
       it('should reject wav format in synthesizeAsync', async () => {
         const client = createClient()
-        await expect(
-          client.synthesizeAsync({
-            text: 'Test',
-            audioSetting: { format: 'wav' },
-          }),
-        ).rejects.toThrow('WAV format is not supported in async mode')
+        const err = client.synthesizeAsync({
+          text: 'Test',
+          audioSetting: { format: 'wav' },
+        })
+        await expect(err).rejects.toThrow(MiniMaxClientError)
+        await expect(err).rejects.toThrow('WAV format is not supported in async mode')
         expect(mockFetch).not.toHaveBeenCalled()
       })
 

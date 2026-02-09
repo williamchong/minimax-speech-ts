@@ -1,6 +1,7 @@
 export { MiniMaxSpeech } from './client.js'
 
 export {
+  MiniMaxClientError,
   MiniMaxError,
   MiniMaxAuthError,
   MiniMaxRateLimitError,

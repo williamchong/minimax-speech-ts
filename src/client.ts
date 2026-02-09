@@ -12,7 +12,7 @@ import {
   API_PATH_GET_VOICE,
   API_PATH_DELETE_VOICE,
 } from './constants.js'
-import { createMiniMaxError } from './errors.js'
+import { MiniMaxClientError, createMiniMaxError } from './errors.js'
 import type {
   MiniMaxSpeechOptions,
   SynthesizeRequest,
@@ -77,17 +77,17 @@ function validateEmotionModel(emotion: string | undefined, model: string): void 
   if (!emotion) return
 
   if (!EMOTION_SUPPORTED_PREFIXES.some((p) => model.startsWith(p))) {
-    throw new Error(`Emotion is not supported with model "${model}"; requires speech-2.8-*, speech-2.6-*, or speech-02-*`)
+    throw new MiniMaxClientError(`Emotion is not supported with model "${model}"; requires speech-2.8-*, speech-2.6-*, or speech-02-*`)
   }
 
   if ((emotion === 'fluent' || emotion === 'whisper') && !model.startsWith('speech-2.6-')) {
-    throw new Error(`Emotion "${emotion}" is only supported with speech-2.6-* models, got "${model}"`)
+    throw new MiniMaxClientError(`Emotion "${emotion}" is only supported with speech-2.6-* models, got "${model}"`)
   }
 }
 
 function validateNoWavFormat(format: string | undefined, context: string): void {
   if (format === 'wav') {
-    throw new Error(`WAV format is not supported in ${context}`)
+    throw new MiniMaxClientError(`WAV format is not supported in ${context}`)
   }
 }
 
