@@ -33,9 +33,9 @@ export class MiniMaxValidationError extends MiniMaxError {
   }
 }
 
-const AUTH_CODES = new Set([1004])
-const RATE_LIMIT_CODES = new Set([1002, 1039])
-const VALIDATION_CODES = new Set([2013, 1042])
+const AUTH_CODES = new Set([1004, 2049])
+const RATE_LIMIT_CODES = new Set([1002, 1039, 1041, 2045])
+const VALIDATION_CODES = new Set([2013, 1042, 2037, 2039, 2048, 20132])
 
 export function createMiniMaxError(statusCode: number, statusMsg: string, traceId?: string): MiniMaxError {
   if (AUTH_CODES.has(statusCode)) {

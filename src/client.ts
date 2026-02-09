@@ -1,6 +1,17 @@
 import { EventSourceParserStream } from 'eventsource-parser/stream'
 
-import { DEFAULT_API_HOST, DEFAULT_MODEL, API_PATH } from './constants.js'
+import {
+  DEFAULT_API_HOST,
+  DEFAULT_MODEL,
+  API_PATH_T2A,
+  API_PATH_T2A_ASYNC,
+  API_PATH_T2A_ASYNC_QUERY,
+  API_PATH_FILE_UPLOAD,
+  API_PATH_VOICE_CLONE,
+  API_PATH_VOICE_DESIGN,
+  API_PATH_GET_VOICE,
+  API_PATH_DELETE_VOICE,
+} from './constants.js'
 import { createMiniMaxError } from './errors.js'
 import type {
   MiniMaxSpeechOptions,
@@ -12,6 +23,19 @@ import type {
   RawSynthesizeResponse,
   RawStreamChunk,
   RawExtraInfo,
+  RawBaseResp,
+  AsyncSynthesizeRequest,
+  AsyncSynthesizeResult,
+  AsyncSynthesizeQueryResult,
+  FileUploadResult,
+  VoiceCloneRequest,
+  VoiceCloneResult,
+  VoiceDesignRequest,
+  VoiceDesignResult,
+  GetVoiceRequest,
+  GetVoiceResult,
+  DeleteVoiceRequest,
+  DeleteVoiceResult,
 } from './types.js'
 
 function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
@@ -40,6 +64,7 @@ function parseExtraInfo(raw: RawExtraInfo): ExtraInfo {
     audioSize: raw.audio_size,
     bitrate: raw.bitrate,
     wordCount: raw.word_count,
+    invisibleCharacterRatio: raw.invisible_character_ratio,
     usageCharacters: raw.usage_characters,
     audioFormat: raw.audio_format,
     audioChannel: raw.audio_channel,
@@ -115,8 +140,8 @@ export class MiniMaxSpeech {
     this.apiHost = options.apiHost ?? DEFAULT_API_HOST
   }
 
-  private getUrl(): string {
-    const base = `${this.apiHost}${API_PATH}`
+  private getUrl(path: string): string {
+    const base = `${this.apiHost}${path}`
     if (this.groupId) {
       return `${base}?GroupId=${this.groupId}`
     }
@@ -130,11 +155,31 @@ export class MiniMaxSpeech {
     }
   }
 
+  private async postJson<T>(path: string, body: Record<string, unknown>): Promise<T & { baseResp: RawBaseResp; traceId?: string }> {
+    const response = await fetch(this.getUrl(path), {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const json = (await response.json()) as Record<string, unknown> & { base_resp: RawBaseResp; trace_id?: string }
+
+    if (json.base_resp.status_code !== 0) {
+      throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg, json.trace_id)
+    }
+
+    return { ...json, baseResp: json.base_resp, traceId: json.trace_id } as unknown as T & { baseResp: RawBaseResp; traceId?: string }
+  }
+
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult>
   async synthesize(request: SynthesizeRequest & { outputFormat: 'url' }): Promise<SynthesizeUrlResult>
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult | SynthesizeUrlResult> {
     const body = buildRequestBody(request)
-    const response = await fetch(this.getUrl(), {
+    const response = await fetch(this.getUrl(API_PATH_T2A), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -174,7 +219,7 @@ export class MiniMaxSpeech {
     const body = buildRequestBody(request)
     body.stream = true
 
-    const response = await fetch(this.getUrl(), {
+    const response = await fetch(this.getUrl(API_PATH_T2A), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -222,5 +267,222 @@ export class MiniMaxSpeech {
     })
 
     return sseStream.pipeThrough(audioTransform)
+  }
+
+  async synthesizeAsync(request: AsyncSynthesizeRequest): Promise<AsyncSynthesizeResult> {
+    const { text, textFileId, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify } = request
+
+    const body: Record<string, unknown> = {
+      model: model ?? DEFAULT_MODEL,
+    }
+
+    if (text !== undefined) body.text = text
+    if (textFileId !== undefined) body.text_file_id = textFileId
+
+    if (voiceSetting) {
+      body.voice_setting = toSnakeCase(voiceSetting as unknown as Record<string, unknown>)
+    }
+    if (audioSetting) {
+      body.audio_setting = toSnakeCase(audioSetting as unknown as Record<string, unknown>)
+    }
+    if (languageBoost !== undefined) body.language_boost = languageBoost
+    if (pronunciationDict) body.pronunciation_dict = pronunciationDict
+    if (voiceModify) {
+      body.voice_modify = toSnakeCase(voiceModify as unknown as Record<string, unknown>)
+    }
+
+    const json = await this.postJson<{
+      task_id: string
+      file_id: number
+      task_token: string
+      usage_characters: number
+    }>(API_PATH_T2A_ASYNC, body)
+
+    return {
+      taskId: json.task_id,
+      fileId: json.file_id,
+      taskToken: json.task_token,
+      usageCharacters: json.usage_characters,
+    }
+  }
+
+  async querySynthesizeAsync(taskId: string): Promise<AsyncSynthesizeQueryResult> {
+    const url = this.getUrl(API_PATH_T2A_ASYNC_QUERY)
+    const separator = url.includes('?') ? '&' : '?'
+    const fullUrl = `${url}${separator}task_id=${encodeURIComponent(taskId)}`
+
+    const response = await fetch(fullUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const json = (await response.json()) as {
+      task_id: number
+      status: 'success' | 'failed' | 'expired' | 'processing'
+      file_id: number
+      base_resp: RawBaseResp
+    }
+
+    if (json.base_resp.status_code !== 0) {
+      throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg)
+    }
+
+    return {
+      taskId: json.task_id,
+      status: json.status,
+      fileId: json.file_id,
+    }
+  }
+
+  async uploadFile(file: Blob, purpose: 'voice_clone' | 'prompt_audio'): Promise<FileUploadResult> {
+    const formData = new FormData()
+    formData.append('purpose', purpose)
+    formData.append('file', file)
+
+    const response = await fetch(this.getUrl(API_PATH_FILE_UPLOAD), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    const json = (await response.json()) as {
+      file: {
+        file_id: number
+        bytes: number
+        created_at: number
+        filename: string
+        purpose: string
+      }
+      base_resp: RawBaseResp
+    }
+
+    if (json.base_resp.status_code !== 0) {
+      throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg)
+    }
+
+    return {
+      file: {
+        fileId: json.file.file_id,
+        bytes: json.file.bytes,
+        createdAt: json.file.created_at,
+        filename: json.file.filename,
+        purpose: json.file.purpose,
+      },
+    }
+  }
+
+  async cloneVoice(request: VoiceCloneRequest): Promise<VoiceCloneResult> {
+    const body: Record<string, unknown> = {
+      file_id: request.fileId,
+      voice_id: request.voiceId,
+    }
+
+    if (request.clonePrompt) {
+      body.clone_prompt = {
+        prompt_audio: request.clonePrompt.promptAudio,
+        prompt_text: request.clonePrompt.promptText,
+      }
+    }
+    if (request.text !== undefined) body.text = request.text
+    if (request.model !== undefined) body.model = request.model
+    if (request.languageBoost !== undefined) body.language_boost = request.languageBoost
+    if (request.needNoiseReduction !== undefined) body.need_noise_reduction = request.needNoiseReduction
+    if (request.needVolumeNormalization !== undefined) body.need_volume_normalization = request.needVolumeNormalization
+
+    const json = await this.postJson<{
+      demo_audio: string
+      input_sensitive: { type: number }
+    }>(API_PATH_VOICE_CLONE, body)
+
+    return {
+      demoAudio: json.demo_audio,
+      inputSensitive: json.input_sensitive,
+    }
+  }
+
+  async designVoice(request: VoiceDesignRequest): Promise<VoiceDesignResult> {
+    const body: Record<string, unknown> = {
+      prompt: request.prompt,
+      preview_text: request.previewText,
+    }
+
+    if (request.voiceId !== undefined) body.voice_id = request.voiceId
+
+    const json = await this.postJson<{
+      voice_id: string
+      trial_audio: string
+    }>(API_PATH_VOICE_DESIGN, body)
+
+    return {
+      voiceId: json.voice_id,
+      trialAudio: json.trial_audio,
+    }
+  }
+
+  async getVoices(request: GetVoiceRequest): Promise<GetVoiceResult> {
+    const json = await this.postJson<{
+      system_voice: Array<{
+        voice_id: string
+        voice_name: string
+        description: string[]
+        created_time: string
+      }>
+      voice_cloning: Array<{
+        voice_id: string
+        description: string[]
+        created_time: string
+      }>
+      voice_generation: Array<{
+        voice_id: string
+        description: string[]
+        created_time: string
+      }>
+    }>(API_PATH_GET_VOICE, { voice_type: request.voiceType })
+
+    return {
+      systemVoice: (json.system_voice ?? []).map((v) => ({
+        voiceId: v.voice_id,
+        voiceName: v.voice_name,
+        description: v.description,
+        createdTime: v.created_time,
+      })),
+      voiceCloning: (json.voice_cloning ?? []).map((v) => ({
+        voiceId: v.voice_id,
+        description: v.description,
+        createdTime: v.created_time,
+      })),
+      voiceGeneration: (json.voice_generation ?? []).map((v) => ({
+        voiceId: v.voice_id,
+        description: v.description,
+        createdTime: v.created_time,
+      })),
+    }
+  }
+
+  async deleteVoice(request: DeleteVoiceRequest): Promise<DeleteVoiceResult> {
+    const json = await this.postJson<{
+      voice_id: string
+      created_time: string
+    }>(API_PATH_DELETE_VOICE, {
+      voice_type: request.voiceType,
+      voice_id: request.voiceId,
+    })
+
+    return {
+      voiceId: json.voice_id,
+      createdTime: json.created_time,
+    }
   }
 }
