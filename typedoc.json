@@ -5,5 +5,6 @@
   "readme": "README.md",
   "excludeInternal": true,
   "excludePrivate": true,
-  "excludeExternals": true
+  "excludeExternals": true,
+  "sourceLinkTemplate": "https://github.com/williamchong/minimax-speech-ts/blob/master/{path}#L{line}"
 }
