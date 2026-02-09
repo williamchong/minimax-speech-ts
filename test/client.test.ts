@@ -220,7 +220,7 @@ describe('MiniMaxSpeech', () => {
       )
 
       const client = createClient()
-      await expect(client.synthesize({ text: '' })).rejects.toThrow(MiniMaxValidationError)
+      await expect(client.synthesize({ text: 'test' })).rejects.toThrow(MiniMaxValidationError)
     })
 
     it('should throw MiniMaxAuthError on auth failure', async () => {
@@ -1344,6 +1344,86 @@ describe('MiniMaxSpeech', () => {
         })
 
         expect(mockFetch).toHaveBeenCalled()
+      })
+    })
+
+    describe('required field validation', () => {
+      it('should throw if synthesize text is empty string', async () => {
+        const client = createClient()
+        await expect(client.synthesize({ text: '' })).rejects.toThrow(MiniMaxClientError)
+        await expect(client.synthesize({ text: '' })).rejects.toThrow('"text" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if synthesize text is undefined', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesize({ text: undefined } as unknown as Parameters<typeof client.synthesize>[0]),
+        ).rejects.toThrow('"text" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if synthesizeStream text is empty string', async () => {
+        const client = createClient()
+        await expect(client.synthesizeStream({ text: '' })).rejects.toThrow(MiniMaxClientError)
+        await expect(client.synthesizeStream({ text: '' })).rejects.toThrow('"text" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if cloneVoice fileId is missing', async () => {
+        const client = createClient()
+        await expect(
+          client.cloneVoice({ voiceId: 'v1' } as unknown as Parameters<typeof client.cloneVoice>[0]),
+        ).rejects.toThrow('"fileId" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if cloneVoice voiceId is empty string', async () => {
+        const client = createClient()
+        await expect(
+          client.cloneVoice({ fileId: 1, voiceId: '' }),
+        ).rejects.toThrow('"voiceId" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if designVoice prompt is empty string', async () => {
+        const client = createClient()
+        await expect(
+          client.designVoice({ prompt: '', previewText: 'test' }),
+        ).rejects.toThrow('"prompt" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if designVoice previewText is empty string', async () => {
+        const client = createClient()
+        await expect(
+          client.designVoice({ prompt: 'test', previewText: '' }),
+        ).rejects.toThrow('"previewText" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if getVoices voiceType is empty string', async () => {
+        const client = createClient()
+        await expect(
+          client.getVoices({ voiceType: '' } as unknown as Parameters<typeof client.getVoices>[0]),
+        ).rejects.toThrow('"voiceType" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if deleteVoice voiceType is missing', async () => {
+        const client = createClient()
+        await expect(
+          client.deleteVoice({ voiceId: 'v1' } as unknown as Parameters<typeof client.deleteVoice>[0]),
+        ).rejects.toThrow('"voiceType" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if deleteVoice voiceId is empty string', async () => {
+        const client = createClient()
+        await expect(
+          client.deleteVoice({ voiceType: 'voice_cloning', voiceId: '' }),
+        ).rejects.toThrow('"voiceId" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
       })
     })
   })

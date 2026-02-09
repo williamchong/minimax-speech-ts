@@ -77,6 +77,10 @@ function validate(rules: Array<[boolean, string]>): void {
   }
 }
 
+function required(value: unknown, name: string): [boolean, string] {
+  return [value === undefined || value === null || value === '', `"${name}" is required`]
+}
+
 function supportsEmotion(model: string): boolean {
   return ['speech-2.8-', 'speech-2.6-', 'speech-02-'].some((p) => model.startsWith(p))
 }
@@ -195,7 +199,10 @@ export class MiniMaxSpeech {
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult>
   async synthesize(request: SynthesizeRequest & { outputFormat: 'url' }): Promise<SynthesizeUrlResult>
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult | SynthesizeUrlResult> {
-    validate(emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL))
+    validate([
+      required(request.text, 'text'),
+      ...emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL),
+    ])
 
     const body = buildRequestBody(request)
     const response = await fetch(this.getUrl(API_PATH_T2A), {
@@ -236,6 +243,7 @@ export class MiniMaxSpeech {
 
   async synthesizeStream(request: SynthesizeStreamRequest): Promise<ReadableStream<Buffer>> {
     validate([
+      required(request.text, 'text'),
       ...emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL),
       [request.audioSetting?.format === 'wav', 'WAV format is not supported in streaming mode'],
     ])
@@ -416,6 +424,8 @@ export class MiniMaxSpeech {
 
   async cloneVoice(request: VoiceCloneRequest): Promise<VoiceCloneResult> {
     validate([
+      required(request.fileId, 'fileId'),
+      required(request.voiceId, 'voiceId'),
       [request.text !== undefined && !request.model, '"model" is required when "text" is provided'],
     ])
 
@@ -448,6 +458,11 @@ export class MiniMaxSpeech {
   }
 
   async designVoice(request: VoiceDesignRequest): Promise<VoiceDesignResult> {
+    validate([
+      required(request.prompt, 'prompt'),
+      required(request.previewText, 'previewText'),
+    ])
+
     const body: Record<string, unknown> = {
       prompt: request.prompt,
       preview_text: request.previewText,
@@ -467,6 +482,8 @@ export class MiniMaxSpeech {
   }
 
   async getVoices(request: GetVoiceRequest): Promise<GetVoiceResult> {
+    validate([required(request.voiceType, 'voiceType')])
+
     const json = await this.postJson<{
       system_voice: Array<{
         voice_id: string
@@ -507,6 +524,11 @@ export class MiniMaxSpeech {
   }
 
   async deleteVoice(request: DeleteVoiceRequest): Promise<DeleteVoiceResult> {
+    validate([
+      required(request.voiceType, 'voiceType'),
+      required(request.voiceId, 'voiceId'),
+    ])
+
     const json = await this.postJson<{
       voice_id: string
       created_time: string
