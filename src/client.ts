@@ -71,24 +71,26 @@ function parseExtraInfo(raw: RawExtraInfo): ExtraInfo {
   }
 }
 
-const EMOTION_SUPPORTED_PREFIXES = ['speech-2.8-', 'speech-2.6-', 'speech-02-']
-
-function validateEmotionModel(emotion: string | undefined, model: string): void {
-  if (!emotion) return
-
-  if (!EMOTION_SUPPORTED_PREFIXES.some((p) => model.startsWith(p))) {
-    throw new MiniMaxClientError(`Emotion is not supported with model "${model}"; requires speech-2.8-*, speech-2.6-*, or speech-02-*`)
-  }
-
-  if ((emotion === 'fluent' || emotion === 'whisper') && !model.startsWith('speech-2.6-')) {
-    throw new MiniMaxClientError(`Emotion "${emotion}" is only supported with speech-2.6-* models, got "${model}"`)
+function validate(rules: Array<[boolean, string]>): void {
+  for (const [fails, message] of rules) {
+    if (fails) throw new MiniMaxClientError(message)
   }
 }
 
-function validateNoWavFormat(format: string | undefined, context: string): void {
-  if (format === 'wav') {
-    throw new MiniMaxClientError(`WAV format is not supported in ${context}`)
-  }
+function supportsEmotion(model: string): boolean {
+  return ['speech-2.8-', 'speech-2.6-', 'speech-02-'].some((p) => model.startsWith(p))
+}
+
+function is26Model(model: string): boolean {
+  return model.startsWith('speech-2.6-')
+}
+
+function emotionRules(emotion: string | undefined, model: string): Array<[boolean, string]> {
+  if (!emotion) return []
+  return [
+    [!supportsEmotion(model), `Emotion is not supported with model "${model}"; requires speech-2.8-*, speech-2.6-*, or speech-02-*`],
+    [(emotion === 'fluent' || emotion === 'whisper') && !is26Model(model), `Emotion "${emotion}" is only supported with speech-2.6-* models, got "${model}"`],
+  ]
 }
 
 function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest): Record<string, unknown> {
@@ -193,7 +195,7 @@ export class MiniMaxSpeech {
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult>
   async synthesize(request: SynthesizeRequest & { outputFormat: 'url' }): Promise<SynthesizeUrlResult>
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult | SynthesizeUrlResult> {
-    validateEmotionModel(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL)
+    validate(emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL))
 
     const body = buildRequestBody(request)
     const response = await fetch(this.getUrl(API_PATH_T2A), {
@@ -233,8 +235,10 @@ export class MiniMaxSpeech {
   }
 
   async synthesizeStream(request: SynthesizeStreamRequest): Promise<ReadableStream<Buffer>> {
-    validateEmotionModel(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL)
-    validateNoWavFormat(request.audioSetting?.format, 'streaming mode')
+    validate([
+      ...emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL),
+      [request.audioSetting?.format === 'wav', 'WAV format is not supported in streaming mode'],
+    ])
 
     const body = buildRequestBody(request)
     body.stream = true
@@ -290,8 +294,12 @@ export class MiniMaxSpeech {
   }
 
   async synthesizeAsync(request: AsyncSynthesizeRequest): Promise<AsyncSynthesizeResult> {
-    validateEmotionModel(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL)
-    validateNoWavFormat(request.audioSetting?.format, 'async mode')
+    validate([
+      [request.text === undefined && request.textFileId === undefined, 'Either "text" or "textFileId" is required'],
+      [request.text !== undefined && request.textFileId !== undefined, '"text" and "textFileId" are mutually exclusive'],
+      ...emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL),
+      [request.audioSetting?.format === 'wav', 'WAV format is not supported in async mode'],
+    ])
 
     const { text, textFileId, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify } = request
 
@@ -407,6 +415,10 @@ export class MiniMaxSpeech {
   }
 
   async cloneVoice(request: VoiceCloneRequest): Promise<VoiceCloneResult> {
+    validate([
+      [request.text !== undefined && !request.model, '"model" is required when "text" is provided'],
+    ])
+
     const body: Record<string, unknown> = {
       file_id: request.fileId,
       voice_id: request.voiceId,

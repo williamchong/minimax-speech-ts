@@ -567,6 +567,24 @@ describe('MiniMaxSpeech', () => {
       const client = createClient()
       await expect(client.synthesizeAsync({ text: 'test' })).rejects.toThrow(MiniMaxAuthError)
     })
+
+    it('should throw if neither text nor textFileId is provided', async () => {
+      const client = createClient()
+      await expect(client.synthesizeAsync({})).rejects.toThrow(MiniMaxClientError)
+      await expect(client.synthesizeAsync({})).rejects.toThrow('Either "text" or "textFileId" is required')
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('should throw if both text and textFileId are provided', async () => {
+      const client = createClient()
+      await expect(
+        client.synthesizeAsync({ text: 'Hello', textFileId: 1 }),
+      ).rejects.toThrow(MiniMaxClientError)
+      await expect(
+        client.synthesizeAsync({ text: 'Hello', textFileId: 1 }),
+      ).rejects.toThrow('"text" and "textFileId" are mutually exclusive')
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
   })
 
   describe('querySynthesizeAsync', () => {
@@ -763,6 +781,17 @@ describe('MiniMaxSpeech', () => {
       await expect(
         client.cloneVoice({ fileId: 1, voiceId: 'dup-voice' }),
       ).rejects.toThrow(MiniMaxValidationError)
+    })
+
+    it('should throw if text is provided without model', async () => {
+      const client = createClient()
+      await expect(
+        client.cloneVoice({ fileId: 1, voiceId: 'my-voice', text: 'Preview' }),
+      ).rejects.toThrow(MiniMaxClientError)
+      await expect(
+        client.cloneVoice({ fileId: 1, voiceId: 'my-voice', text: 'Preview' }),
+      ).rejects.toThrow('"model" is required when "text" is provided')
+      expect(mockFetch).not.toHaveBeenCalled()
     })
   })
 
