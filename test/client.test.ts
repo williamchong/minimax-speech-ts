@@ -480,6 +480,15 @@ describe('MiniMaxSpeech', () => {
       await expect(client.synthesizeStream({ text: 'test' })).rejects.toThrow('HTTP 401')
     })
 
+    it('should throw when response body is null', async () => {
+      const response = new Response(null, { status: 200 })
+      Object.defineProperty(response, 'body', { value: null })
+      mockFetch.mockResolvedValueOnce(response)
+
+      const client = createClient()
+      await expect(client.synthesizeStream({ text: 'test' })).rejects.toThrow('Response body is null')
+    })
+
     it('should send streamOptions in body', async () => {
       const stream = makeSSEStream([
         { data: { audio: Buffer.from('c').toString('hex'), status: 1 }, trace_id: 't' },
@@ -634,6 +643,24 @@ describe('MiniMaxSpeech', () => {
 
       const client = createClient()
       await expect(client.querySynthesizeAsync('bad-id')).rejects.toThrow('HTTP 404')
+    })
+
+    it('should throw on API error with trace_id', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 1004, status_msg: 'Unauthorized' },
+          trace_id: 'trace-query-err',
+        }),
+      )
+
+      const client = createClient()
+      try {
+        await client.querySynthesizeAsync('task-bad')
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxAuthError)
+        expect((e as MiniMaxAuthError).traceId).toBe('trace-query-err')
+      }
     })
   })
 

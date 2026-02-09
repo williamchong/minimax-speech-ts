@@ -216,7 +216,7 @@ export interface RawSynthesizeResponse {
 
 export interface RawStreamChunk {
   base_resp?: RawBaseResp
-  data: {
+  data?: {
     audio: string
     status: number
   }

@@ -164,7 +164,7 @@ export class MiniMaxSpeech {
   private getUrl(path: string): string {
     const base = `${this.apiHost}${path}`
     if (this.groupId) {
-      return `${base}?GroupId=${this.groupId}`
+      return `${base}?GroupId=${encodeURIComponent(this.groupId)}`
     }
     return base
   }
@@ -366,10 +366,11 @@ export class MiniMaxSpeech {
       status: 'success' | 'failed' | 'expired' | 'processing'
       file_id: number
       base_resp: RawBaseResp
+      trace_id?: string
     }
 
     if (json.base_resp.status_code !== 0) {
-      throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg)
+      throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg, json.trace_id)
     }
 
     return {
