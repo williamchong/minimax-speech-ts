@@ -1002,4 +1002,305 @@ describe('MiniMaxSpeech', () => {
       ).rejects.toThrow(MiniMaxError)
     })
   })
+
+  describe('client-side validation', () => {
+    describe('emotion + model compatibility', () => {
+      it('should reject any emotion with speech-01-* models', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesize({
+            text: 'Test',
+            model: 'speech-01-hd',
+            voiceSetting: { voiceId: 'v1', emotion: 'happy' },
+          }),
+        ).rejects.toThrow('Emotion is not supported with model "speech-01-hd"')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should reject any emotion with speech-01-turbo', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesizeAsync({
+            text: 'Test',
+            model: 'speech-01-turbo',
+            voiceSetting: { voiceId: 'v1', emotion: 'calm' },
+          }),
+        ).rejects.toThrow('Emotion is not supported with model "speech-01-turbo"')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should reject whisper emotion with non-2.6 model in synthesize', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesize({
+            text: 'Test',
+            model: 'speech-2.8-hd',
+            voiceSetting: { voiceId: 'v1', emotion: 'whisper' },
+          }),
+        ).rejects.toThrow('Emotion "whisper" is only supported with speech-2.6-* models')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should reject fluent emotion with non-2.6 model in synthesize', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesize({
+            text: 'Test',
+            model: 'speech-02-hd',
+            voiceSetting: { voiceId: 'v1', emotion: 'fluent' },
+          }),
+        ).rejects.toThrow('Emotion "fluent" is only supported with speech-2.6-* models')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should reject whisper emotion with default model in synthesize', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesize({
+            text: 'Test',
+            voiceSetting: { voiceId: 'v1', emotion: 'whisper' },
+          }),
+        ).rejects.toThrow('Emotion "whisper" is only supported with speech-2.6-* models, got "speech-02-hd"')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should allow whisper emotion with speech-2.6-hd', async () => {
+        const audioHex = Buffer.from('ok').toString('hex')
+        mockFetch.mockResolvedValueOnce(
+          makeResponse({
+            base_resp: { status_code: 0, status_msg: 'success' },
+            data: { audio: audioHex, status: 2 },
+            extra_info: { ...baseExtraInfo },
+            trace_id: 'trace-ok',
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesize({
+          text: 'Test',
+          model: 'speech-2.6-hd',
+          voiceSetting: { voiceId: 'v1', emotion: 'whisper' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should allow fluent emotion with speech-2.6-turbo', async () => {
+        const audioHex = Buffer.from('ok').toString('hex')
+        mockFetch.mockResolvedValueOnce(
+          makeResponse({
+            base_resp: { status_code: 0, status_msg: 'success' },
+            data: { audio: audioHex, status: 2 },
+            extra_info: { ...baseExtraInfo },
+            trace_id: 'trace-ok',
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesize({
+          text: 'Test',
+          model: 'speech-2.6-turbo',
+          voiceSetting: { voiceId: 'v1', emotion: 'fluent' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should reject whisper emotion in synthesizeStream', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesizeStream({
+            text: 'Test',
+            model: 'speech-2.8-turbo',
+            voiceSetting: { voiceId: 'v1', emotion: 'whisper' },
+          }),
+        ).rejects.toThrow('Emotion "whisper" is only supported with speech-2.6-* models')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should allow happy emotion with speech-02-hd', async () => {
+        const audioHex = Buffer.from('ok').toString('hex')
+        mockFetch.mockResolvedValueOnce(
+          makeResponse({
+            base_resp: { status_code: 0, status_msg: 'success' },
+            data: { audio: audioHex, status: 2 },
+            extra_info: { ...baseExtraInfo },
+            trace_id: 'trace-ok',
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesize({
+          text: 'Test',
+          model: 'speech-02-hd',
+          voiceSetting: { voiceId: 'v1', emotion: 'happy' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should allow calm emotion with speech-2.8-hd', async () => {
+        const audioHex = Buffer.from('ok').toString('hex')
+        mockFetch.mockResolvedValueOnce(
+          makeResponse({
+            base_resp: { status_code: 0, status_msg: 'success' },
+            data: { audio: audioHex, status: 2 },
+            extra_info: { ...baseExtraInfo },
+            trace_id: 'trace-ok',
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesize({
+          text: 'Test',
+          model: 'speech-2.8-hd',
+          voiceSetting: { voiceId: 'v1', emotion: 'calm' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should skip validation when no emotion is set', async () => {
+        const audioHex = Buffer.from('ok').toString('hex')
+        mockFetch.mockResolvedValueOnce(
+          makeResponse({
+            base_resp: { status_code: 0, status_msg: 'success' },
+            data: { audio: audioHex, status: 2 },
+            extra_info: { ...baseExtraInfo },
+            trace_id: 'trace-ok',
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesize({
+          text: 'Test',
+          model: 'speech-01-hd',
+          voiceSetting: { voiceId: 'v1' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+    })
+
+    describe('wav format validation', () => {
+      it('should reject wav format in synthesizeStream', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesizeStream({
+            text: 'Test',
+            audioSetting: { format: 'wav' },
+          }),
+        ).rejects.toThrow('WAV format is not supported in streaming mode')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should reject wav format in synthesizeAsync', async () => {
+        const client = createClient()
+        await expect(
+          client.synthesizeAsync({
+            text: 'Test',
+            audioSetting: { format: 'wav' },
+          }),
+        ).rejects.toThrow('WAV format is not supported in async mode')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should allow pcm format in synthesizeStream', async () => {
+        const stream = makeSSEStream([
+          { data: { audio: Buffer.from('ok').toString('hex'), status: 1 }, trace_id: 't' },
+        ])
+        mockFetch.mockResolvedValueOnce(
+          new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesizeStream({
+          text: 'Test',
+          audioSetting: { format: 'pcm' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should allow flac format in synthesizeStream', async () => {
+        const stream = makeSSEStream([
+          { data: { audio: Buffer.from('ok').toString('hex'), status: 1 }, trace_id: 't' },
+        ])
+        mockFetch.mockResolvedValueOnce(
+          new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesizeStream({
+          text: 'Test',
+          audioSetting: { format: 'flac' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should allow mp3 format in synthesizeStream', async () => {
+        const stream = makeSSEStream([
+          { data: { audio: Buffer.from('ok').toString('hex'), status: 1 }, trace_id: 't' },
+        ])
+        mockFetch.mockResolvedValueOnce(
+          new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesizeStream({
+          text: 'Test',
+          audioSetting: { format: 'mp3' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should allow no format specified in synthesizeStream', async () => {
+        const stream = makeSSEStream([
+          { data: { audio: Buffer.from('ok').toString('hex'), status: 1 }, trace_id: 't' },
+        ])
+        mockFetch.mockResolvedValueOnce(
+          new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesizeStream({ text: 'Test' })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+
+      it('should allow wav format in non-streaming synthesize', async () => {
+        const audioHex = Buffer.from('ok').toString('hex')
+        mockFetch.mockResolvedValueOnce(
+          makeResponse({
+            base_resp: { status_code: 0, status_msg: 'success' },
+            data: { audio: audioHex, status: 2 },
+            extra_info: { ...baseExtraInfo },
+            trace_id: 'trace-ok',
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesize({
+          text: 'Test',
+          audioSetting: { format: 'wav' },
+        })
+
+        expect(mockFetch).toHaveBeenCalled()
+      })
+    })
+  })
 })

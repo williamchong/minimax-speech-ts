@@ -71,6 +71,26 @@ function parseExtraInfo(raw: RawExtraInfo): ExtraInfo {
   }
 }
 
+const EMOTION_SUPPORTED_PREFIXES = ['speech-2.8-', 'speech-2.6-', 'speech-02-']
+
+function validateEmotionModel(emotion: string | undefined, model: string): void {
+  if (!emotion) return
+
+  if (!EMOTION_SUPPORTED_PREFIXES.some((p) => model.startsWith(p))) {
+    throw new Error(`Emotion is not supported with model "${model}"; requires speech-2.8-*, speech-2.6-*, or speech-02-*`)
+  }
+
+  if ((emotion === 'fluent' || emotion === 'whisper') && !model.startsWith('speech-2.6-')) {
+    throw new Error(`Emotion "${emotion}" is only supported with speech-2.6-* models, got "${model}"`)
+  }
+}
+
+function validateNoWavFormat(format: string | undefined, context: string): void {
+  if (format === 'wav') {
+    throw new Error(`WAV format is not supported in ${context}`)
+  }
+}
+
 function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest): Record<string, unknown> {
   const { text, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify, timbreWeights, ...rest } = request
 
@@ -178,6 +198,8 @@ export class MiniMaxSpeech {
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult>
   async synthesize(request: SynthesizeRequest & { outputFormat: 'url' }): Promise<SynthesizeUrlResult>
   async synthesize(request: SynthesizeRequest): Promise<SynthesizeResult | SynthesizeUrlResult> {
+    validateEmotionModel(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL)
+
     const body = buildRequestBody(request)
     const response = await fetch(this.getUrl(API_PATH_T2A), {
       method: 'POST',
@@ -216,6 +238,9 @@ export class MiniMaxSpeech {
   }
 
   async synthesizeStream(request: SynthesizeStreamRequest): Promise<ReadableStream<Buffer>> {
+    validateEmotionModel(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL)
+    validateNoWavFormat(request.audioSetting?.format, 'streaming mode')
+
     const body = buildRequestBody(request)
     body.stream = true
 
@@ -270,6 +295,9 @@ export class MiniMaxSpeech {
   }
 
   async synthesizeAsync(request: AsyncSynthesizeRequest): Promise<AsyncSynthesizeResult> {
+    validateEmotionModel(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL)
+    validateNoWavFormat(request.audioSetting?.format, 'async mode')
+
     const { text, textFileId, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify } = request
 
     const body: Record<string, unknown> = {
