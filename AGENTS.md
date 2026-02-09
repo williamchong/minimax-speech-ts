@@ -11,6 +11,7 @@ npm test             # vitest run (all tests)
 npx vitest run test/client.test.ts              # Run single test file
 npx vitest run -t "should decode audio chunks"  # Run test by name
 npm run test:watch   # vitest in watch mode
+npm run docs         # Generate TypeDoc API docs to docs/
 ```
 
 ## Architecture
@@ -35,6 +36,11 @@ TypeScript client library for the MiniMax Speech Synthesis API. Single runtime d
 ### Tests (`test/client.test.ts`)
 
 All tests mock `globalThis.fetch` via `vi.stubGlobal`. Helper functions: `makeResponse()` for synthesize responses, `makeJsonResponse()` for other endpoints, `makeSSEStream()` for streaming chunks. The `baseExtraInfo` fixture provides shared raw extra_info fields.
+
+### CI/CD (`.github/workflows/`)
+
+- **`ci.yml`** — Runs lint, build, test on Node 18/20/22 for pushes and PRs to main/master.
+- **`docs.yml`** — Generates TypeDoc and deploys to GitHub Pages on push to main/master.
 
 ### Commit style
 

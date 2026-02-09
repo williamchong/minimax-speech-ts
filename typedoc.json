@@ -1,0 +1,9 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs",
+  "name": "minimax-speech-ts",
+  "readme": "README.md",
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "excludeExternals": true
+}

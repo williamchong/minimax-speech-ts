@@ -1,6 +1,6 @@
 # minimax-speech-ts
 
-TypeScript client for the [MiniMax Speech Synthesis (T2A) API](https://platform.minimax.io).
+TypeScript client for the [MiniMax Speech Synthesis (T2A) API](https://platform.minimax.io). [API Documentation](https://williamchong.github.io/minimax-speech-ts/)
 
 - Full API coverage: sync, streaming, async, voice cloning, voice design, voice management
 - Idiomatic camelCase interface with automatic snake_case conversion
