@@ -226,7 +226,7 @@ Before submitting changes, ALWAYS run this full sequence:
 npm run lint && npm run build && npm test
 ```
 
-This mirrors the CI workflow and ensures your changes will pass.
+This mirrors the CI workflow and ensures your changes will pass. The `&&` operator stops execution at the first failing command, which is intentional - fix errors as they appear in the sequence.
 
 ## Trust These Instructions
 
