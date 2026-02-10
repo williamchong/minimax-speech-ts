@@ -1,7 +1,7 @@
 {
   "name": "minimax-speech-ts",
   "version": "0.1.0",
-  "description": "TypeScript client for the MiniMax Speech Synthesis (T2A) API",
+  "description": "MiniMax TTS (Text-to-Speech) SDK for Node.js — speech synthesis, streaming, voice cloning & voice design",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -31,12 +31,20 @@
   },
   "keywords": [
     "minimax",
+    "minimax-api",
+    "minimax-tts",
+    "minimax-sdk",
     "tts",
     "text-to-speech",
     "speech-synthesis",
-    "ai"
+    "voice-cloning",
+    "voice-generation",
+    "t2a",
+    "ai",
+    "streaming",
+    "sse"
   ],
-  "author": "William Chong",
+  "author": "William Chong <me@williamchong.cloud>",
   "license": "MIT",
   "repository": {
     "type": "git",

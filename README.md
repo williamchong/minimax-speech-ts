@@ -1,18 +1,23 @@
-# minimax-speech-ts
+# MiniMax TTS SDK for JavaScript / TypeScript
 
 [![npm version](https://img.shields.io/npm/v/minimax-speech-ts)](https://www.npmjs.com/package/minimax-speech-ts)
 [![CI](https://github.com/williamchong/minimax-speech-ts/actions/workflows/ci.yml/badge.svg)](https://github.com/williamchong/minimax-speech-ts/actions/workflows/ci.yml)
 [![npm downloads](https://img.shields.io/npm/dm/minimax-speech-ts)](https://www.npmjs.com/package/minimax-speech-ts)
 [![license](https://img.shields.io/npm/l/minimax-speech-ts)](https://github.com/williamchong/minimax-speech-ts/blob/master/LICENSE)
 
-TypeScript client for the [MiniMax Speech Synthesis (T2A) API](https://platform.minimax.io). [API Documentation](https://williamchong.github.io/minimax-speech-ts/)
+An unofficial **MiniMax Speech Synthesis (Text-to-Speech / T2A) SDK** for **Node.js**, **JavaScript**, and **TypeScript**. Convert text to natural-sounding speech using [MiniMax's TTS API](https://platform.minimax.io) with full streaming, voice cloning, and voice design support.
 
-- Full API coverage: sync, streaming, async, voice cloning, voice design, voice management
-- Idiomatic camelCase interface with automatic snake_case conversion
-- Client-side parameter validation with clear error messages
-- Streaming via Server-Sent Events with `ReadableStream<Buffer>`
-- Typed error hierarchy for precise error handling
-- ESM and CommonJS dual output
+[API Reference](https://williamchong.github.io/minimax-speech-ts/) | [npm](https://www.npmjs.com/package/minimax-speech-ts) | [GitHub](https://github.com/williamchong/minimax-speech-ts)
+
+## Features
+
+- **Full MiniMax TTS API coverage** — sync, streaming (SSE), async, voice cloning, voice design, and voice management
+- **TypeScript-first** — fully typed requests, responses, and error hierarchy
+- **Idiomatic JS/TS interface** — camelCase API with automatic snake_case wire-format conversion
+- **Client-side validation** — catches parameter errors before sending requests
+- **Real-time streaming** — Server-Sent Events with `ReadableStream<Buffer>` for low-latency audio
+- **Dual module output** — works with both ESM (`import`) and CommonJS (`require`)
+- **Zero config** — just provide your MiniMax API key and start synthesizing
 
 ## Install
 
@@ -290,6 +295,21 @@ Client-side validation catches common mistakes before making a request:
 | `speech-01-hd` | None | |
 | `speech-01-turbo` | None | |
 | `speech-01` | None | Legacy |
+
+## Use Cases
+
+- **Voice-over generation** — generate narration audio from scripts for videos and podcasts
+- **Accessibility** — add text-to-speech to web and Node.js applications
+- **Voice cloning** — clone a voice from a short audio sample and synthesize new speech
+- **Voice design** — create custom AI voices from text descriptions
+- **Real-time TTS streaming** — stream audio chunks via SSE for chatbots, virtual assistants, and live applications
+- **Batch audio production** — use async synthesis for long-form content like audiobooks and articles
+
+## Compatibility
+
+- **Node.js** >= 18 (uses native `fetch` and `ReadableStream`)
+- **TypeScript** >= 5.0
+- Works with any MiniMax API key from [platform.minimax.io](https://platform.minimax.io)
 
 ## License
 
