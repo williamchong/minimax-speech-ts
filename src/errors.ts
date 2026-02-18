@@ -5,6 +5,18 @@ export class MiniMaxClientError extends Error {
   }
 }
 
+export class MiniMaxHttpError extends Error {
+  httpStatus: number
+  statusText: string
+
+  constructor(httpStatus: number, statusText: string) {
+    super(`HTTP ${httpStatus}: ${statusText}`)
+    this.name = 'MiniMaxHttpError'
+    this.httpStatus = httpStatus
+    this.statusText = statusText
+  }
+}
+
 export class MiniMaxError extends Error {
   statusCode: number
   statusMsg: string

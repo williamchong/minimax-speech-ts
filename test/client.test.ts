@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MiniMaxSpeech } from '../src/client.js'
-import { MiniMaxClientError, MiniMaxError, MiniMaxAuthError, MiniMaxRateLimitError, MiniMaxValidationError } from '../src/errors.js'
+import { MiniMaxClientError, MiniMaxHttpError, MiniMaxError, MiniMaxAuthError, MiniMaxRateLimitError, MiniMaxValidationError } from '../src/errors.js'
 import type { RawSynthesizeResponse, RawStreamChunk } from '../src/types.js'
 
 const mockFetch = vi.fn()
@@ -251,13 +251,20 @@ describe('MiniMaxSpeech', () => {
       await expect(client.synthesize({ text: 'test' })).rejects.toThrow(MiniMaxRateLimitError)
     })
 
-    it('should throw on HTTP error', async () => {
+    it('should throw MiniMaxHttpError on HTTP error', async () => {
       mockFetch.mockResolvedValueOnce(
         new Response('Internal Server Error', { status: 500, statusText: 'Internal Server Error' }),
       )
 
       const client = createClient()
-      await expect(client.synthesize({ text: 'test' })).rejects.toThrow('HTTP 500')
+      try {
+        await client.synthesize({ text: 'test' })
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxHttpError)
+        expect((e as MiniMaxHttpError).httpStatus).toBe(500)
+        expect((e as MiniMaxHttpError).statusText).toBe('Internal Server Error')
+      }
     })
 
     it('should send subtitleEnable and outputFormat in body', async () => {
@@ -338,6 +345,28 @@ describe('MiniMaxSpeech', () => {
         timbre: 20,
         sound_effects: 'robotic',
       })
+    })
+
+    it('should send pronunciationDict in body', async () => {
+      const audioHex = Buffer.from('test').toString('hex')
+      mockFetch.mockResolvedValueOnce(
+        makeResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          data: { audio: audioHex, status: 2 },
+          extra_info: { ...baseExtraInfo },
+          trace_id: 'trace-pd',
+        }),
+      )
+
+      const client = createClient()
+      await client.synthesize({
+        text: 'Test',
+        pronunciationDict: { tone: ['处理, chǔ lǐ'] },
+      })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const body = JSON.parse(options.body as string)
+      expect(body.pronunciation_dict).toEqual({ tone: ['处理, chǔ lǐ'] })
     })
 
     it('should include invisibleCharacterRatio in extraInfo', async () => {
@@ -471,13 +500,20 @@ describe('MiniMaxSpeech', () => {
       await expect(reader.read()).rejects.toThrow(MiniMaxAuthError)
     })
 
-    it('should throw on HTTP error', async () => {
+    it('should throw MiniMaxHttpError on HTTP error', async () => {
       mockFetch.mockResolvedValueOnce(
         new Response('Unauthorized', { status: 401, statusText: 'Unauthorized' }),
       )
 
       const client = createClient()
-      await expect(client.synthesizeStream({ text: 'test' })).rejects.toThrow('HTTP 401')
+      try {
+        await client.synthesizeStream({ text: 'test' })
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxHttpError)
+        expect((e as MiniMaxHttpError).httpStatus).toBe(401)
+        expect((e as MiniMaxHttpError).statusText).toBe('Unauthorized')
+      }
     })
 
     it('should throw when response body is null', async () => {
@@ -510,6 +546,36 @@ describe('MiniMaxSpeech', () => {
       const [, options] = mockFetch.mock.calls[0]!
       const body = JSON.parse(options.body as string)
       expect(body.stream_options).toEqual({ exclude_aggregated_audio: true })
+    })
+
+    it('should silently skip malformed SSE data', async () => {
+      const audioHex = Buffer.from('good').toString('hex')
+
+      const stream = makeSSEStream([
+        'not valid json{{{',
+        { data: { audio: audioHex, status: 1 }, trace_id: 'trace-ok' },
+      ])
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+
+      const client = createClient()
+      const audioStream = await client.synthesizeStream({ text: 'Test' })
+
+      const chunks: Buffer[] = []
+      const reader = audioStream.getReader()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+      }
+
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0]!.toString()).toBe('good')
     })
   })
 
@@ -636,13 +702,20 @@ describe('MiniMaxSpeech', () => {
       expect(url).toBe('https://api.minimaxi.chat/v1/query/t2a_async_query_v2?GroupId=grp-1&task_id=task-xyz')
     })
 
-    it('should throw on HTTP error', async () => {
+    it('should throw MiniMaxHttpError on HTTP error', async () => {
       mockFetch.mockResolvedValueOnce(
         new Response('Not Found', { status: 404, statusText: 'Not Found' }),
       )
 
       const client = createClient()
-      await expect(client.querySynthesizeAsync('bad-id')).rejects.toThrow('HTTP 404')
+      try {
+        await client.querySynthesizeAsync('bad-id')
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxHttpError)
+        expect((e as MiniMaxHttpError).httpStatus).toBe(404)
+        expect((e as MiniMaxHttpError).statusText).toBe('Not Found')
+      }
     })
 
     it('should throw on API error with trace_id', async () => {
@@ -731,6 +804,23 @@ describe('MiniMaxSpeech', () => {
       const blob = new Blob(['data'])
       await expect(client.uploadFile(blob, 'voice_clone')).rejects.toThrow(MiniMaxAuthError)
     })
+
+    it('should throw MiniMaxHttpError on HTTP error', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('Service Unavailable', { status: 503, statusText: 'Service Unavailable' }),
+      )
+
+      const client = createClient()
+      const blob = new Blob(['data'])
+      try {
+        await client.uploadFile(blob, 'voice_clone')
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxHttpError)
+        expect((e as MiniMaxHttpError).httpStatus).toBe(503)
+        expect((e as MiniMaxHttpError).statusText).toBe('Service Unavailable')
+      }
+    })
   })
 
   describe('cloneVoice', () => {
@@ -808,6 +898,22 @@ describe('MiniMaxSpeech', () => {
       await expect(
         client.cloneVoice({ fileId: 1, voiceId: 'dup-voice' }),
       ).rejects.toThrow(MiniMaxValidationError)
+    })
+
+    it('should throw MiniMaxHttpError on HTTP error (postJson path)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('Bad Gateway', { status: 502, statusText: 'Bad Gateway' }),
+      )
+
+      const client = createClient()
+      try {
+        await client.cloneVoice({ fileId: 1, voiceId: 'test-voice' })
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxHttpError)
+        expect((e as MiniMaxHttpError).httpStatus).toBe(502)
+        expect((e as MiniMaxHttpError).statusText).toBe('Bad Gateway')
+      }
     })
 
     it('should throw if text is provided without model', async () => {

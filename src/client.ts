@@ -12,7 +12,7 @@ import {
   API_PATH_GET_VOICE,
   API_PATH_DELETE_VOICE,
 } from './constants.js'
-import { MiniMaxClientError, createMiniMaxError } from './errors.js'
+import { MiniMaxClientError, MiniMaxHttpError, createMiniMaxError } from './errors.js'
 import type {
   MiniMaxSpeechOptions,
   SynthesizeRequest,
@@ -97,12 +97,18 @@ function emotionRules(emotion: string | undefined, model: string): Array<[boolea
   ]
 }
 
-function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest): Record<string, unknown> {
-  const { text, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify, timbreWeights, ...rest } = request
+function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest | AsyncSynthesizeRequest): Record<string, unknown> {
+  const { text, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify, ...rest } = request
 
   const body: Record<string, unknown> = {
-    text,
     model: model ?? DEFAULT_MODEL,
+  }
+
+  if (text !== undefined) body.text = text
+
+  // Handle async-specific textFileId
+  if ('textFileId' in rest && (rest as AsyncSynthesizeRequest).textFileId !== undefined) {
+    body.text_file_id = (rest as AsyncSynthesizeRequest).textFileId
   }
 
   if (voiceSetting) {
@@ -125,8 +131,8 @@ function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest):
     body.voice_modify = toSnakeCase(voiceModify as unknown as Record<string, unknown>)
   }
 
-  if (timbreWeights) {
-    body.timbre_weights = timbreWeights.map((tw) =>
+  if ('timbreWeights' in request && (request as SynthesizeRequest).timbreWeights) {
+    body.timbre_weights = (request as SynthesizeRequest).timbreWeights!.map((tw) =>
       toSnakeCase(tw as unknown as Record<string, unknown>),
     )
   }
@@ -184,7 +190,7 @@ export class MiniMaxSpeech {
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new MiniMaxHttpError(response.status, response.statusText)
     }
 
     const json = (await response.json()) as Record<string, unknown> & { base_resp: RawBaseResp; trace_id?: string }
@@ -212,7 +218,7 @@ export class MiniMaxSpeech {
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new MiniMaxHttpError(response.status, response.statusText)
     }
 
     const json = (await response.json()) as RawSynthesizeResponse
@@ -258,7 +264,7 @@ export class MiniMaxSpeech {
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new MiniMaxHttpError(response.status, response.statusText)
     }
 
     if (!response.body) {
@@ -309,26 +315,7 @@ export class MiniMaxSpeech {
       [request.audioSetting?.format === 'wav', 'WAV format is not supported in async mode'],
     ])
 
-    const { text, textFileId, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify } = request
-
-    const body: Record<string, unknown> = {
-      model: model ?? DEFAULT_MODEL,
-    }
-
-    if (text !== undefined) body.text = text
-    if (textFileId !== undefined) body.text_file_id = textFileId
-
-    if (voiceSetting) {
-      body.voice_setting = toSnakeCase(voiceSetting as unknown as Record<string, unknown>)
-    }
-    if (audioSetting) {
-      body.audio_setting = toSnakeCase(audioSetting as unknown as Record<string, unknown>)
-    }
-    if (languageBoost !== undefined) body.language_boost = languageBoost
-    if (pronunciationDict) body.pronunciation_dict = pronunciationDict
-    if (voiceModify) {
-      body.voice_modify = toSnakeCase(voiceModify as unknown as Record<string, unknown>)
-    }
+    const body = buildRequestBody(request)
 
     const json = await this.postJson<{
       task_id: string
@@ -358,7 +345,7 @@ export class MiniMaxSpeech {
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new MiniMaxHttpError(response.status, response.statusText)
     }
 
     const json = (await response.json()) as {
@@ -394,7 +381,7 @@ export class MiniMaxSpeech {
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new MiniMaxHttpError(response.status, response.statusText)
     }
 
     const json = (await response.json()) as {
