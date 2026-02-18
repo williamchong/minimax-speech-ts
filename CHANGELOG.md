@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 (2026-02-19)
+
+### Bug Fixes
+
+- **Typed HTTP errors** — HTTP failures now throw `MiniMaxHttpError` (with `httpStatus` and `statusText` properties) instead of untyped `Error`, enabling programmatic handling of network-level vs API-level errors
+
+### Internal
+
+- Refactored `synthesizeAsync` to reuse shared `buildRequestBody()`, eliminating duplicated body-construction logic
+- Expanded test coverage: HTTP error typing, `pronunciationDict` passthrough, malformed SSE resilience
+
 ## 0.1.0 (2026-02-10)
 
 Initial release.

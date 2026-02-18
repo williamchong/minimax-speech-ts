@@ -1,6 +1,6 @@
 {
   "name": "minimax-speech-ts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MiniMax TTS (Text-to-Speech) SDK for Node.js — speech synthesis, streaming, voice cloning & voice design",
   "type": "module",
   "main": "./dist/index.cjs",
