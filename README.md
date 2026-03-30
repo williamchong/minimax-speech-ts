@@ -5,48 +5,96 @@
 [![npm downloads](https://img.shields.io/npm/dm/minimax-speech-ts)](https://www.npmjs.com/package/minimax-speech-ts)
 [![license](https://img.shields.io/npm/l/minimax-speech-ts)](https://github.com/williamchong/minimax-speech-ts/blob/master/LICENSE)
 
-An unofficial **MiniMax Speech Synthesis (Text-to-Speech / T2A) SDK** for **Node.js**, **JavaScript**, and **TypeScript**. Convert text to natural-sounding speech using [MiniMax's TTS API](https://platform.minimax.io) with full streaming, voice cloning, and voice design support.
+Type-safe [MiniMax](https://platform.minimax.io) TTS client for Node.js. Full API coverage — sync and streaming synthesis, voice cloning, voice design, and voice management — with a single runtime dependency. Ships ESM + CJS with complete TypeScript declarations. (Unofficial)
 
 [API Reference](https://williamchong.github.io/minimax-speech-ts/) | [npm](https://www.npmjs.com/package/minimax-speech-ts) | [GitHub](https://github.com/williamchong/minimax-speech-ts)
 
 ## Features
 
-- **Full MiniMax TTS API coverage** — sync, streaming (SSE), async, voice cloning, voice design, and voice management
-- **TypeScript-first** — fully typed requests, responses, and error hierarchy
-- **Idiomatic JS/TS interface** — camelCase API with automatic snake_case wire-format conversion
-- **Client-side validation** — catches parameter errors before sending requests
-- **Real-time streaming** — Server-Sent Events with `ReadableStream<Buffer>` for low-latency audio
-- **Dual module output** — works with both ESM (`import`) and CommonJS (`require`)
-- **Zero config** — just provide your MiniMax API key and start synthesizing
-
-## Install
-
-```bash
-npm install minimax-speech-ts
-```
-
-Requires Node.js >= 18.
+- **Full API coverage** — sync, streaming (SSE), async, voice cloning, voice design, voice management
+- **Zero config** — `npm install`, pass your API key, get audio back
+- **`ReadableStream<Buffer>` streaming** — pipe directly to a file, HTTP response, or WebSocket
+- **Typed error hierarchy** — `instanceof` checks for auth, rate-limit, and validation errors
+- **Client-side validation** — catches bad params before the network round-trip
+- **camelCase in, snake_case on the wire** — no manual conversion needed
+- **Dual output** — ESM and CommonJS with `.d.ts` declarations
 
 ## Quick Start
 
+1. Get an API key from [platform.minimax.io](https://platform.minimax.io)
+2. `npm install minimax-speech-ts`
+3. Run:
+
 ```ts
 import { MiniMaxSpeech } from 'minimax-speech-ts'
+import fs from 'node:fs'
 
 const client = new MiniMaxSpeech({
   apiKey: process.env.MINIMAX_API_KEY!,
   groupId: process.env.MINIMAX_GROUP_ID, // optional
 })
 
-// Text to speech
 const result = await client.synthesize({
   text: 'Hello, world!',
   model: 'speech-02-hd',
   voiceSetting: { voiceId: 'English_expressive_narrator' },
 })
 
-// result.audio is a Buffer containing the audio data
-await fs.promises.writeFile('output.mp3', result.audio)
+await fs.promises.writeFile('output.mp3', result.audio) // → output.mp3
 ```
+
+## Highlights
+
+### Stream audio to a file
+
+```ts
+const stream = await client.synthesizeStream({
+  text: 'Stream me!',
+  voiceSetting: { voiceId: 'English_expressive_narrator' },
+  audioSetting: { format: 'mp3' },
+})
+
+const writer = fs.createWriteStream('output.mp3')
+for await (const chunk of stream) writer.write(chunk)
+writer.end()
+```
+
+### Synthesize with emotion
+
+```ts
+const result = await client.synthesize({
+  text: 'I am so happy to meet you!',
+  voiceSetting: { voiceId: 'English_expressive_narrator', emotion: 'happy' },
+})
+```
+
+### Clone a voice
+
+```ts
+const file = new Blob([await fs.promises.readFile('sample.mp3')], { type: 'audio/mp3' })
+const upload = await client.uploadFile(file, 'voice_clone')
+await client.cloneVoice({ fileId: upload.file.fileId, voiceId: 'my-voice' })
+```
+
+### Design a voice from a description
+
+```ts
+const voice = await client.designVoice({
+  prompt: 'A warm female voice with a slight British accent',
+  previewText: 'Hello, this is a preview.',
+  voiceId: 'my-designed-voice',
+})
+```
+
+## Why this SDK?
+
+Compared to calling the MiniMax API with raw `fetch`:
+
+- **Automatic camelCase ↔ snake_case** — write idiomatic JS, the SDK converts for the wire
+- **Request validation** — catches invalid params, emotion/model mismatches, and format conflicts before the network call
+- **Typed errors** — `MiniMaxAuthError`, `MiniMaxRateLimitError`, `MiniMaxValidationError` with `statusCode` and `traceId`
+- **Streaming handled internally** — SSE parsing and hex-to-Buffer decoding are built in
+- **One dependency** — only `eventsource-parser` for SSE; everything else is native Node.js
 
 ## API
 
@@ -310,6 +358,10 @@ Client-side validation catches common mistakes before making a request:
 - **Node.js** >= 18 (uses native `fetch` and `ReadableStream`)
 - **TypeScript** >= 5.0
 - Works with any MiniMax API key from [platform.minimax.io](https://platform.minimax.io)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 

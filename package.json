@@ -1,7 +1,7 @@
 {
   "name": "minimax-speech-ts",
   "version": "0.1.1",
-  "description": "MiniMax TTS (Text-to-Speech) SDK for Node.js — speech synthesis, streaming, voice cloning & voice design",
+  "description": "Type-safe MiniMax TTS client for Node.js — sync & streaming synthesis, voice cloning, voice design. ESM + CJS.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -42,7 +42,12 @@
     "t2a",
     "ai",
     "streaming",
-    "sse"
+    "sse",
+    "voice-design",
+    "emotion",
+    "nodejs",
+    "audio",
+    "narration"
   ],
   "author": "William Chong <me@williamchong.cloud>",
   "license": "MIT",
