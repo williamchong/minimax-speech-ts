@@ -59,6 +59,10 @@
   "bugs": {
     "url": "https://github.com/williamchong/minimax-speech-ts/issues"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "engines": {
     "node": ">=18"
   },
