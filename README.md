@@ -211,17 +211,31 @@ status.status  // 'processing' | 'success' | 'failed' | 'expired'
 status.fileId  // number (download file ID when status is 'success')
 ```
 
-### `uploadFile(file, purpose): Promise<FileUploadResult>`
+### `uploadFile(file, purpose, options?): Promise<FileUploadResult>`
 
-Upload an audio file for voice cloning.
+Upload an audio file for voice cloning. Accepts a `Blob` or a `ReadableStream<Uint8Array>`.
 
 ```ts
+// Blob upload (buffered)
 const audioBlob = new Blob([await fs.promises.readFile('voice.mp3')], { type: 'audio/mp3' })
 const upload = await client.uploadFile(audioBlob, 'voice_clone')
 
 upload.file.fileId    // number
 upload.file.bytes     // number
 upload.file.filename  // string
+```
+
+For large files, pass a `ReadableStream<Uint8Array>` to upload without buffering the full payload in memory. The multipart body is assembled with per-chunk backpressure and cancellation propagation, so aborting the request cleanly releases the upstream source.
+
+```ts
+import { Readable } from 'node:stream'
+import { createReadStream } from 'node:fs'
+
+const stream = Readable.toWeb(createReadStream('big-voice.wav')) as ReadableStream<Uint8Array>
+const upload = await client.uploadFile(stream, 'voice_clone', {
+  filename: 'big-voice.wav',
+  contentType: 'audio/wav',  // optional, defaults to 'application/octet-stream'
+})
 ```
 
 ### `cloneVoice(request): Promise<VoiceCloneResult>`

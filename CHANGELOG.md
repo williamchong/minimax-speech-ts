@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-04-10)
+
+### Features
+
+- **Streaming uploads** — `uploadFile()` gains a `ReadableStream<Uint8Array>` overload for uploading large files without buffering the full payload in memory. Uses a pull-based multipart assembly with per-chunk backpressure and propagates cancellation to the upstream reader on abort, so aborting a fetch cleanly releases the source stream.
+- **Optional filename for Blob uploads** — the existing `Blob` overload now accepts an optional `{ filename }` option that maps to the `Content-Disposition` filename in the multipart body. Fully backward compatible with existing two-argument callers.
+- **Exported `FilePurpose` type** — the `'voice_clone' | 'prompt_audio'` literal union is now exported for reuse in consumer code.
+
+### Internal
+
+- Runtime validation of the `uploadFile` `purpose` argument — prevents header injection from JavaScript callers that bypass TypeScript's type check.
+- Added npm Trusted Publishing workflow with OIDC provenance.
+- Restructured documentation for developer-centric value clarity.
+
 ## 0.1.1 (2026-02-19)
 
 ### Bug Fixes
