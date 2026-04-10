@@ -41,6 +41,7 @@ export type {
   AsyncSynthesizeRequest,
   AsyncSynthesizeResult,
   AsyncSynthesizeQueryResult,
+  FilePurpose,
   FileUploadResult,
   VoiceCloneRequest,
   VoiceCloneResult,

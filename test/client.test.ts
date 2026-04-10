@@ -34,6 +34,24 @@ function makeJsonResponse(body: Record<string, unknown>, status = 200): Response
   })
 }
 
+async function drainStream(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value) chunks.push(value)
+  }
+  const total = chunks.reduce((n, c) => n + c.byteLength, 0)
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const c of chunks) {
+    merged.set(c, offset)
+    offset += c.byteLength
+  }
+  return new TextDecoder().decode(merged)
+}
+
 function makeSSEStream(chunks: (RawStreamChunk | string)[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
   return new ReadableStream({
@@ -820,6 +838,161 @@ describe('MiniMaxSpeech', () => {
         expect((e as MiniMaxHttpError).httpStatus).toBe(503)
         expect((e as MiniMaxHttpError).statusText).toBe('Service Unavailable')
       }
+    })
+
+    it('should use provided filename when uploading a Blob', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          file: {
+            file_id: 1,
+            bytes: 4,
+            created_at: 1,
+            filename: 'override.mp3',
+            purpose: 'voice_clone',
+          },
+        }),
+      )
+
+      const client = createClient()
+      const blob = new Blob(['data'], { type: 'audio/mp3' })
+      await client.uploadFile(blob, 'voice_clone', { filename: 'override.mp3' })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const formData = options.body as FormData
+      const filePart = formData.get('file') as { name: string }
+      expect(filePart.name).toBe('override.mp3')
+    })
+
+    it('should POST multipart stream with correct headers and body', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          file: {
+            file_id: 77,
+            bytes: 11,
+            created_at: 1700000000,
+            filename: 'voice.wav',
+            purpose: 'voice_clone',
+          },
+        }),
+      )
+
+      const payload = new TextEncoder().encode('hello world')
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(payload)
+          controller.close()
+        },
+      })
+
+      const client = createClient()
+      const result = await client.uploadFile(stream, 'voice_clone', {
+        filename: 'voice.wav',
+        contentType: 'audio/wav',
+      })
+
+      const [url, options] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://api.minimaxi.chat/v1/files/upload')
+      expect(options.method).toBe('POST')
+      expect(options.duplex).toBe('half')
+      expect(options.headers.Authorization).toBe('Bearer test-api-key')
+
+      const contentType = options.headers['Content-Type'] as string
+      const boundaryMatch = contentType.match(/^multipart\/form-data; boundary=(.+)$/)
+      expect(boundaryMatch).not.toBeNull()
+      const boundary = boundaryMatch![1]!
+      expect(boundary).toMatch(/^----MiniMaxFormBoundary[0-9a-f]{32}$/)
+
+      const bodyStream = options.body as ReadableStream<Uint8Array>
+      expect(typeof bodyStream.getReader).toBe('function')
+      const serialized = await drainStream(bodyStream)
+
+      expect(serialized).toContain(`--${boundary}\r\n`)
+      expect(serialized).toContain('Content-Disposition: form-data; name="purpose"\r\n\r\nvoice_clone\r\n')
+      expect(serialized).toContain('Content-Disposition: form-data; name="file"; filename="voice.wav"\r\n')
+      expect(serialized).toContain('Content-Type: audio/wav\r\n\r\n')
+      expect(serialized).toContain('hello world')
+      expect(serialized).toContain(`\r\n--${boundary}--\r\n`)
+
+      expect(result.file.fileId).toBe(77)
+    })
+
+    it('should default stream contentType to application/octet-stream', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          file: {
+            file_id: 1,
+            bytes: 1,
+            created_at: 1,
+            filename: 'blob.bin',
+            purpose: 'prompt_audio',
+          },
+        }),
+      )
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([0x00]))
+          controller.close()
+        },
+      })
+
+      const client = createClient()
+      await client.uploadFile(stream, 'prompt_audio', { filename: 'blob.bin' })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const serialized = await drainStream(options.body as ReadableStream<Uint8Array>)
+      expect(serialized).toContain('Content-Type: application/octet-stream\r\n\r\n')
+    })
+
+    it('should require filename when uploading a stream', async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close()
+        },
+      })
+
+      const client = createClient()
+      await expect(
+        // @ts-expect-error — intentionally missing required filename at runtime
+        client.uploadFile(stream, 'voice_clone', {}),
+      ).rejects.toThrow(MiniMaxClientError)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('should reject an invalid purpose', async () => {
+      const client = createClient()
+      const blob = new Blob(['data'])
+      await expect(
+        // @ts-expect-error — intentionally passing a value outside the FilePurpose union
+        client.uploadFile(blob, 'voice_clone\r\nX-Injected: 1'),
+      ).rejects.toThrow(MiniMaxClientError)
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('should propagate cancel to the upstream stream on abort', async () => {
+      let cancelReason: unknown = undefined
+      const upstream = new ReadableStream<Uint8Array>({
+        pull() {
+          return new Promise<void>(() => {})
+        },
+        cancel(reason) {
+          cancelReason = reason
+        },
+      })
+
+      mockFetch.mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        await (init.body as ReadableStream<Uint8Array>).cancel('aborted')
+        throw new Error('fetch aborted')
+      })
+
+      const client = createClient()
+      await expect(
+        client.uploadFile(upstream, 'voice_clone', { filename: 'x.bin' }),
+      ).rejects.toThrow('fetch aborted')
+      expect(cancelReason).toBe('aborted')
     })
   })
 

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { EventSourceParserStream } from 'eventsource-parser/stream'
 
 import {
@@ -27,6 +29,7 @@ import type {
   AsyncSynthesizeRequest,
   AsyncSynthesizeResult,
   AsyncSynthesizeQueryResult,
+  FilePurpose,
   FileUploadResult,
   VoiceCloneRequest,
   VoiceCloneResult,
@@ -95,6 +98,77 @@ function emotionRules(emotion: string | undefined, model: string): Array<[boolea
     [!supportsEmotion(model), `Emotion is not supported with model "${model}"; requires speech-2.8-*, speech-2.6-*, or speech-02-*`],
     [(emotion === 'fluent' || emotion === 'whisper') && !is26Model(model), `Emotion "${emotion}" is only supported with speech-2.6-* models, got "${model}"`],
   ]
+}
+
+const textEncoder = new TextEncoder()
+
+function escapeMultipartFilename(filename: string): string {
+  return filename.replace(/[\r\n]/g, '').replace(/"/g, '%22')
+}
+
+function createMultipartStream(
+  stream: ReadableStream<Uint8Array>,
+  filename: string,
+  contentType: string,
+  purpose: FilePurpose,
+): { body: ReadableStream<Uint8Array>; contentType: string } {
+  const boundary = `----MiniMaxFormBoundary${randomUUID().replace(/-/g, '')}`
+  const preamble = textEncoder.encode(
+    `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="purpose"\r\n\r\n` +
+      `${purpose}\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${escapeMultipartFilename(filename)}"\r\n` +
+      `Content-Type: ${contentType}\r\n\r\n`,
+  )
+  const trailer = textEncoder.encode(`\r\n--${boundary}--\r\n`)
+
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  let phase: 'preamble' | 'body' | 'trailer' | 'done' = 'preamble'
+
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (phase === 'preamble') {
+        controller.enqueue(preamble)
+        reader = stream.getReader()
+        phase = 'body'
+        return
+      }
+      if (phase === 'body') {
+        const result = await reader!.read()
+        // Cancel may have run concurrently and nulled the reader
+        if (phase !== 'body' || reader === null) return
+        if (result.done) {
+          reader.releaseLock()
+          reader = null
+          controller.enqueue(trailer)
+          phase = 'trailer'
+          return
+        }
+        if (result.value) controller.enqueue(result.value)
+        return
+      }
+      if (phase === 'trailer') {
+        controller.close()
+        phase = 'done'
+      }
+    },
+    async cancel(reason) {
+      phase = 'done'
+      if (reader) {
+        try {
+          await reader.cancel(reason)
+        } finally {
+          reader.releaseLock()
+          reader = null
+        }
+      } else {
+        await stream.cancel(reason)
+      }
+    },
+  })
+
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` }
 }
 
 function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest | AsyncSynthesizeRequest): Record<string, unknown> {
@@ -367,18 +441,65 @@ export class MiniMaxSpeech {
     }
   }
 
-  async uploadFile(file: Blob, purpose: 'voice_clone' | 'prompt_audio'): Promise<FileUploadResult> {
-    const formData = new FormData()
-    formData.append('purpose', purpose)
-    formData.append('file', file)
+  async uploadFile(
+    file: Blob,
+    purpose: FilePurpose,
+    options?: { filename?: string },
+  ): Promise<FileUploadResult>
+  async uploadFile(
+    file: ReadableStream<Uint8Array>,
+    purpose: FilePurpose,
+    options: { filename: string; contentType?: string },
+  ): Promise<FileUploadResult>
+  async uploadFile(
+    file: Blob | ReadableStream<Uint8Array>,
+    purpose: FilePurpose,
+    options?: { filename?: string; contentType?: string },
+  ): Promise<FileUploadResult> {
+    const isStream =
+      file !== null &&
+      typeof file === 'object' &&
+      typeof (file as ReadableStream<Uint8Array>).getReader === 'function'
+
+    validate([
+      [
+        purpose !== 'voice_clone' && purpose !== 'prompt_audio',
+        `"purpose" must be "voice_clone" or "prompt_audio", got "${purpose}"`,
+      ],
+      [
+        isStream && !options?.filename,
+        '"filename" is required when uploading a ReadableStream',
+      ],
+    ])
+
+    let body: BodyInit
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.apiKey}`,
+    }
+
+    if (isStream) {
+      // validate() above guarantees options.filename is set on the stream path
+      const multipart = createMultipartStream(
+        file as ReadableStream<Uint8Array>,
+        options!.filename!,
+        options!.contentType ?? 'application/octet-stream',
+        purpose,
+      )
+      body = multipart.body
+      headers['Content-Type'] = multipart.contentType
+    } else {
+      const formData = new FormData()
+      formData.append('purpose', purpose)
+      formData.append('file', file as Blob, options?.filename)
+      body = formData
+    }
 
     const response = await fetch(this.getUrl(API_PATH_FILE_UPLOAD), {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: formData,
-    })
+      headers,
+      body,
+      ...(isStream ? { duplex: 'half' } : {}),
+    } as RequestInit & { duplex?: 'half' })
 
     if (!response.ok) {
       throw new MiniMaxHttpError(response.status, response.statusText)

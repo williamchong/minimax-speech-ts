@@ -103,6 +103,8 @@ export interface AsyncSynthesizeQueryResult {
 }
 
 // File upload types
+export type FilePurpose = 'voice_clone' | 'prompt_audio'
+
 export interface FileUploadResult {
   file: {
     fileId: number
