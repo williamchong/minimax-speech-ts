@@ -258,8 +258,9 @@ const result = await client.cloneVoice({
   },
 })
 
-result.demoAudio       // hex-encoded preview audio (empty if no text provided)
-result.inputSensitive  // { type: number }
+result.demoAudio       // URL to preview audio (empty if no text provided)
+result.inputSensitive  // { type: number } — 0 = normal; 1–7 categorize the safety trigger
+result.extraInfo       // billing info (audioLength, usageCharacters, …) when text+model preview ran
 ```
 
 ### `designVoice(request): Promise<VoiceDesignResult>`
@@ -310,9 +311,9 @@ The library provides a typed error hierarchy:
 import {
   MiniMaxClientError,      // Client-side validation (bad params, before request is sent)
   MiniMaxError,            // Base class for all API errors
-  MiniMaxAuthError,        // Authentication failures (codes 1004, 2049)
-  MiniMaxRateLimitError,   // Rate limiting (codes 1002, 1039, 1041, 2045)
-  MiniMaxValidationError,  // Server-side validation (codes 2013, 1042, 2037, 2039, 2048, 20132)
+  MiniMaxAuthError,        // Authentication failures (codes 1004, 2042, 2049)
+  MiniMaxRateLimitError,   // Rate limiting (codes 1002, 1039, 1041, 2045, 2056)
+  MiniMaxValidationError,  // Server-side validation (codes 1008, 1026, 1027, 1042, 1043, 1044, 2013, 2037, 2039, 2048, 20132)
 } from 'minimax-speech-ts'
 ```
 
