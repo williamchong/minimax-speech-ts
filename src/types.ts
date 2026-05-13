@@ -97,7 +97,7 @@ export interface AsyncSynthesizeRequest {
 }
 
 export interface AsyncSynthesizeResult {
-  taskId: string
+  taskId: number
   fileId: number
   taskToken: string
   usageCharacters: number
@@ -138,8 +138,11 @@ export interface VoiceCloneRequest {
 }
 
 export interface VoiceCloneResult {
+  /** URL to preview audio; empty when no `text` was provided. */
   demoAudio: string
   inputSensitive: { type: number }
+  /** Returned only when `text` and `model` are provided (preview synthesis was billed). */
+  extraInfo?: ExtraInfo
 }
 
 // Voice design types

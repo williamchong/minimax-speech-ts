@@ -654,7 +654,7 @@ describe('MiniMaxSpeech', () => {
       mockFetch.mockResolvedValueOnce(
         makeJsonResponse({
           base_resp: { status_code: 0, status_msg: 'success' },
-          task_id: 'task-123',
+          task_id: 95157322514444,
           file_id: 456,
           task_token: 'token-789',
           usage_characters: 100,
@@ -676,17 +676,44 @@ describe('MiniMaxSpeech', () => {
       expect(body.model).toBe('speech-02-hd')
       expect(body.voice_setting.voice_id).toBe('English_expressive_narrator')
 
-      expect(result.taskId).toBe('task-123')
+      expect(result.taskId).toBe(95157322514444)
       expect(result.fileId).toBe(456)
       expect(result.taskToken).toBe('token-789')
       expect(result.usageCharacters).toBe(100)
+    })
+
+    it('should rename audio_sample_rate and english_normalization for async API', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          task_id: 1,
+          file_id: 1,
+          task_token: 't',
+          usage_characters: 1,
+        }),
+      )
+
+      const client = createClient()
+      await client.synthesizeAsync({
+        text: 'Hello',
+        voiceSetting: { voiceId: 'v', textNormalization: true },
+        audioSetting: { sampleRate: 32000, bitrate: 128000 },
+      })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const body = JSON.parse(options.body as string)
+      expect(body.audio_setting.audio_sample_rate).toBe(32000)
+      expect(body.audio_setting.sample_rate).toBeUndefined()
+      expect(body.audio_setting.bitrate).toBe(128000)
+      expect(body.voice_setting.english_normalization).toBe(true)
+      expect(body.voice_setting.text_normalization).toBeUndefined()
     })
 
     it('should send textFileId as text_file_id', async () => {
       mockFetch.mockResolvedValueOnce(
         makeJsonResponse({
           base_resp: { status_code: 0, status_msg: 'success' },
-          task_id: 'task-456',
+          task_id: 95157322514445,
           file_id: 789,
           task_token: 'token-abc',
           usage_characters: 5000,
@@ -744,10 +771,10 @@ describe('MiniMaxSpeech', () => {
       )
 
       const client = createClient()
-      const result = await client.querySynthesizeAsync('task-abc')
+      const result = await client.querySynthesizeAsync(95157322514444)
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?task_id=task-abc')
+      expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?task_id=95157322514444')
       expect(options.method).toBe('GET')
 
       expect(result.taskId).toBe(123)
@@ -766,10 +793,10 @@ describe('MiniMaxSpeech', () => {
       )
 
       const client = createClient({ groupId: 'grp-1' })
-      await client.querySynthesizeAsync('task-xyz')
+      await client.querySynthesizeAsync(42)
 
       const [url] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?GroupId=grp-1&task_id=task-xyz')
+      expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?GroupId=grp-1&task_id=42')
     })
 
     it('should throw MiniMaxHttpError on HTTP error', async () => {
@@ -779,7 +806,7 @@ describe('MiniMaxSpeech', () => {
 
       const client = createClient()
       try {
-        await client.querySynthesizeAsync('bad-id')
+        await client.querySynthesizeAsync(999)
         expect.unreachable('should have thrown')
       } catch (e) {
         expect(e).toBeInstanceOf(MiniMaxHttpError)
@@ -798,7 +825,7 @@ describe('MiniMaxSpeech', () => {
 
       const client = createClient()
       try {
-        await client.querySynthesizeAsync('task-bad')
+        await client.querySynthesizeAsync(0)
         expect.unreachable('should have thrown')
       } catch (e) {
         expect(e).toBeInstanceOf(MiniMaxAuthError)
@@ -1083,6 +1110,51 @@ describe('MiniMaxSpeech', () => {
 
       expect(result.demoAudio).toBe('abcdef0123456789')
       expect(result.inputSensitive.type).toBe(0)
+    })
+
+    it('should parse extra_info when present in voice clone response', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          demo_audio: 'https://example.com/preview.mp3',
+          input_sensitive: { type: 0 },
+          extra_info: {
+            audio_length: 11124,
+            audio_sample_rate: 32000,
+            audio_size: 179926,
+            bitrate: 128000,
+            word_count: 18,
+            usage_characters: 18,
+          },
+        }),
+      )
+
+      const client = createClient()
+      const result = await client.cloneVoice({
+        fileId: 1,
+        voiceId: 'v',
+        text: 'Preview',
+        model: 'speech-2.8-hd',
+      })
+
+      expect(result.extraInfo).toBeDefined()
+      expect(result.extraInfo!.audioLength).toBe(11124)
+      expect(result.extraInfo!.usageCharacters).toBe(18)
+    })
+
+    it('should leave extraInfo undefined when not returned', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          demo_audio: '',
+          input_sensitive: { type: 0 },
+        }),
+      )
+
+      const client = createClient()
+      const result = await client.cloneVoice({ fileId: 1, voiceId: 'v' })
+
+      expect(result.extraInfo).toBeUndefined()
     })
 
     it('should handle clone_prompt', async () => {
@@ -1374,6 +1446,47 @@ describe('MiniMaxSpeech', () => {
       await expect(
         client.cloneVoice({ fileId: 1, voiceId: 'test-voice' }),
       ).rejects.toThrow(MiniMaxValidationError)
+    })
+
+    it('should classify 2042 as MiniMaxAuthError', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 2042, status_msg: 'No access to voice_id' },
+        }),
+      )
+
+      const client = createClient()
+      await expect(
+        client.deleteVoice({ voiceType: 'voice_cloning', voiceId: 'x' }),
+      ).rejects.toThrow(MiniMaxAuthError)
+    })
+
+    it('should classify 2056 as MiniMaxRateLimitError', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 2056, status_msg: 'Usage limit exceeded' },
+        }),
+      )
+
+      const client = createClient()
+      await expect(
+        client.designVoice({ prompt: 'test', previewText: 'test' }),
+      ).rejects.toThrow(MiniMaxRateLimitError)
+    })
+
+    it('should classify 1008/1026/1027/1043/1044 as MiniMaxValidationError', async () => {
+      const codes = [1008, 1026, 1027, 1043, 1044]
+      const client = createClient()
+      for (const code of codes) {
+        mockFetch.mockResolvedValueOnce(
+          makeJsonResponse({
+            base_resp: { status_code: code, status_msg: `code ${code}` },
+          }),
+        )
+        await expect(
+          client.cloneVoice({ fileId: 1, voiceId: 'v' }),
+        ).rejects.toThrow(MiniMaxValidationError)
+      }
     })
 
     it('should classify unknown codes as generic MiniMaxError', async () => {

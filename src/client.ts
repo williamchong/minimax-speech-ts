@@ -232,6 +232,22 @@ function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest |
   return body
 }
 
+// Async /v1/t2a_async_v2 expects audio_sample_rate (not sample_rate) and
+// english_normalization (not text_normalization). Patch the snake-cased body
+// produced by buildRequestBody.
+function renameAsyncFields(body: Record<string, unknown>): void {
+  const audio = body.audio_setting as Record<string, unknown> | undefined
+  if (audio && 'sample_rate' in audio) {
+    audio.audio_sample_rate = audio.sample_rate
+    delete audio.sample_rate
+  }
+  const voice = body.voice_setting as Record<string, unknown> | undefined
+  if (voice && 'text_normalization' in voice) {
+    voice.english_normalization = voice.text_normalization
+    delete voice.text_normalization
+  }
+}
+
 export class MiniMaxSpeech {
   private readonly apiKey: string
   private readonly groupId?: string
@@ -393,9 +409,10 @@ export class MiniMaxSpeech {
     ])
 
     const body = buildRequestBody(request)
+    renameAsyncFields(body)
 
     const json = await this.postJson<{
-      task_id: string
+      task_id: number
       file_id: number
       task_token: string
       usage_characters: number
@@ -409,7 +426,7 @@ export class MiniMaxSpeech {
     }
   }
 
-  async querySynthesizeAsync(taskId: string): Promise<AsyncSynthesizeQueryResult> {
+  async querySynthesizeAsync(taskId: number): Promise<AsyncSynthesizeQueryResult> {
     const url = this.getUrl(API_PATH_T2A_ASYNC_QUERY)
     const separator = url.includes('?') ? '&' : '?'
     const fullUrl = `${url}${separator}task_id=${encodeURIComponent(taskId)}`
@@ -561,11 +578,13 @@ export class MiniMaxSpeech {
     const json = await this.postJson<{
       demo_audio: string
       input_sensitive: { type: number }
+      extra_info?: RawExtraInfo
     }>(API_PATH_VOICE_CLONE, body)
 
     return {
       demoAudio: json.demo_audio,
       inputSensitive: json.input_sensitive,
+      extraInfo: json.extra_info ? parseExtraInfo(json.extra_info) : undefined,
     }
   }
 
