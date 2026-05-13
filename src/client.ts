@@ -211,9 +211,11 @@ function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest |
     )
   }
 
-  // Handle non-streaming specific fields
   if ('subtitleEnable' in rest && (rest as SynthesizeRequest).subtitleEnable !== undefined) {
     body.subtitle_enable = (rest as SynthesizeRequest).subtitleEnable
+  }
+  if ('subtitleType' in rest && (rest as SynthesizeRequest).subtitleType !== undefined) {
+    body.subtitle_type = (rest as SynthesizeRequest).subtitleType
   }
   if ('outputFormat' in rest && (rest as SynthesizeRequest).outputFormat !== undefined) {
     body.output_format = (rest as SynthesizeRequest).outputFormat
@@ -282,6 +284,7 @@ export class MiniMaxSpeech {
     validate([
       required(request.text, 'text'),
       ...emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL),
+      [request.subtitleType === 'word_streaming', '"word_streaming" subtitle type is only valid in streaming mode'],
     ])
 
     const body = buildRequestBody(request)

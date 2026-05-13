@@ -1,3 +1,8 @@
+import type { AUDIO_FORMATS, SUBTITLE_TYPES } from './constants.js'
+
+export type AudioFormat = (typeof AUDIO_FORMATS)[number]
+export type SubtitleType = (typeof SUBTITLE_TYPES)[number]
+
 export interface MiniMaxSpeechOptions {
   apiKey: string
   groupId?: string
@@ -17,7 +22,7 @@ export interface VoiceSetting {
 export interface AudioSetting {
   sampleRate?: number
   bitrate?: number
-  format?: 'mp3' | 'pcm' | 'flac' | 'wav'
+  format?: AudioFormat
   channel?: 1 | 2
   forceCbr?: boolean
 }
@@ -44,10 +49,12 @@ export interface SynthesizeRequest {
   voiceModify?: VoiceModify
   timbreWeights?: TimbreWeight[]
   subtitleEnable?: boolean
+  /** `word_streaming` is only valid in streaming mode. */
+  subtitleType?: SubtitleType
   outputFormat?: 'url' | 'hex'
 }
 
-export interface SynthesizeStreamRequest extends Omit<SynthesizeRequest, 'subtitleEnable' | 'outputFormat'> {
+export interface SynthesizeStreamRequest extends Omit<SynthesizeRequest, 'outputFormat'> {
   streamOptions?: { excludeAggregatedAudio?: boolean }
 }
 

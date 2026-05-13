@@ -104,7 +104,8 @@ Compared to calling the MiniMax API with raw `fetch`:
 new MiniMaxSpeech({
   apiKey: string        // Required. MiniMax API key.
   groupId?: string      // Optional. MiniMax group ID, appended as ?GroupId= query param.
-  apiHost?: string      // Optional. Defaults to 'https://api.minimaxi.chat'.
+  apiHost?: string      // Optional. Defaults to 'https://api.minimax.io'.
+                        //           For reduced TTFA, try 'https://api-uw.minimax.io'.
 })
 ```
 
@@ -124,7 +125,7 @@ const result = await client.synthesize({
     emotion: 'happy',              // speech-02-*/speech-2.6-*/speech-2.8-* only
   },
   audioSetting: {
-    format: 'mp3',                 // 'mp3' | 'pcm' | 'flac' | 'wav'
+    format: 'mp3',                 // 'mp3' | 'pcm' | 'flac' | 'wav' | 'pcmu_raw' | 'pcmu_wav' | 'opus'
     sampleRate: 32000,
     bitrate: 128000,
     channel: 1,
@@ -141,6 +142,7 @@ const result = await client.synthesize({
     { voiceId: 'voice-2', weight: 0.5 },
   ],
   subtitleEnable: false,
+  subtitleType: 'sentence',        // 'sentence' | 'word' | 'word_streaming' — 'word_streaming' is streaming-only
   pronunciationDict: { tone: ['处理/(chǔ lǐ)'] },
 })
 
