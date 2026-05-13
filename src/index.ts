@@ -16,6 +16,7 @@ export {
   EMOTIONS,
   AUDIO_FORMATS,
   SAMPLE_RATES,
+  SUBTITLE_TYPES,
   API_PATH,
   API_PATH_T2A,
   API_PATH_T2A_ASYNC,
@@ -28,6 +29,8 @@ export {
 } from './constants.js'
 
 export type {
+  AudioFormat,
+  SubtitleType,
   MiniMaxSpeechOptions,
   SynthesizeRequest,
   SynthesizeStreamRequest,

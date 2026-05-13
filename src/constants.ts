@@ -1,4 +1,4 @@
-export const DEFAULT_API_HOST = 'https://api.minimaxi.chat'
+export const DEFAULT_API_HOST = 'https://api.minimax.io'
 export const DEFAULT_MODEL = 'speech-02-hd'
 
 export const API_PATH_T2A = '/v1/t2a_v2'
@@ -38,6 +38,8 @@ export const EMOTIONS = [
   'whisper',
 ] as const
 
-export const AUDIO_FORMATS = ['mp3', 'pcm', 'flac', 'wav'] as const
+export const AUDIO_FORMATS = ['mp3', 'pcm', 'flac', 'wav', 'pcmu_raw', 'pcmu_wav', 'opus'] as const
 
 export const SAMPLE_RATES = [8000, 16000, 22050, 24000, 32000, 44100] as const
+
+export const SUBTITLE_TYPES = ['sentence', 'word', 'word_streaming'] as const

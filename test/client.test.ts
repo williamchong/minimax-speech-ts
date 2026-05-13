@@ -109,7 +109,7 @@ describe('MiniMaxSpeech', () => {
       await client.synthesize({ text: 'Hello world' })
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.minimaxi.chat/v1/t2a_v2',
+        'https://api.minimax.io/v1/t2a_v2',
         expect.objectContaining({
           method: 'POST',
           headers: {
@@ -135,7 +135,7 @@ describe('MiniMaxSpeech', () => {
       await client.synthesize({ text: 'Test' })
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.minimaxi.chat/v1/t2a_v2?GroupId=group-123',
+        'https://api.minimax.io/v1/t2a_v2?GroupId=group-123',
         expect.any(Object),
       )
     })
@@ -303,6 +303,33 @@ describe('MiniMaxSpeech', () => {
       const body = JSON.parse(options.body as string)
       expect(body.subtitle_enable).toBe(true)
       expect(result.subtitleFile).toBe('https://example.com/subtitle.srt')
+    })
+
+    it('should send subtitleType as subtitle_type', async () => {
+      const audioHex = Buffer.from('test').toString('hex')
+      mockFetch.mockResolvedValueOnce(
+        makeResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          data: { audio: audioHex, status: 2 },
+          extra_info: { ...baseExtraInfo },
+          trace_id: 'trace-st',
+        }),
+      )
+
+      const client = createClient()
+      await client.synthesize({ text: 'Test', subtitleEnable: true, subtitleType: 'word' })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const body = JSON.parse(options.body as string)
+      expect(body.subtitle_type).toBe('word')
+    })
+
+    it('should reject word_streaming subtitleType in non-streaming synthesize', async () => {
+      const client = createClient()
+      await expect(
+        client.synthesize({ text: 'Test', subtitleType: 'word_streaming' }),
+      ).rejects.toThrow('"word_streaming" subtitle type is only valid in streaming mode')
+      expect(mockFetch).not.toHaveBeenCalled()
     })
 
     it('should handle timbreWeights', async () => {
@@ -543,6 +570,31 @@ describe('MiniMaxSpeech', () => {
       await expect(client.synthesizeStream({ text: 'test' })).rejects.toThrow('Response body is null')
     })
 
+    it('should allow subtitleEnable and word_streaming subtitleType in streaming', async () => {
+      const stream = makeSSEStream([
+        { data: { audio: Buffer.from('c').toString('hex'), status: 1 }, trace_id: 't' },
+      ])
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+
+      const client = createClient()
+      await client.synthesizeStream({
+        text: 'Test',
+        subtitleEnable: true,
+        subtitleType: 'word_streaming',
+      })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const body = JSON.parse(options.body as string)
+      expect(body.subtitle_enable).toBe(true)
+      expect(body.subtitle_type).toBe('word_streaming')
+    })
+
     it('should send streamOptions in body', async () => {
       const stream = makeSSEStream([
         { data: { audio: Buffer.from('c').toString('hex'), status: 1 }, trace_id: 't' },
@@ -616,7 +668,7 @@ describe('MiniMaxSpeech', () => {
       })
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/t2a_async_v2')
+      expect(url).toBe('https://api.minimax.io/v1/t2a_async_v2')
       expect(options.method).toBe('POST')
 
       const body = JSON.parse(options.body as string)
@@ -695,7 +747,7 @@ describe('MiniMaxSpeech', () => {
       const result = await client.querySynthesizeAsync('task-abc')
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/query/t2a_async_query_v2?task_id=task-abc')
+      expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?task_id=task-abc')
       expect(options.method).toBe('GET')
 
       expect(result.taskId).toBe(123)
@@ -717,7 +769,7 @@ describe('MiniMaxSpeech', () => {
       await client.querySynthesizeAsync('task-xyz')
 
       const [url] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/query/t2a_async_query_v2?GroupId=grp-1&task_id=task-xyz')
+      expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?GroupId=grp-1&task_id=task-xyz')
     })
 
     it('should throw MiniMaxHttpError on HTTP error', async () => {
@@ -775,7 +827,7 @@ describe('MiniMaxSpeech', () => {
       const result = await client.uploadFile(blob, 'voice_clone')
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/files/upload')
+      expect(url).toBe('https://api.minimax.io/v1/files/upload')
       expect(options.method).toBe('POST')
       expect(options.body).toBeInstanceOf(FormData)
       expect(options.headers.Authorization).toBe('Bearer test-api-key')
@@ -893,7 +945,7 @@ describe('MiniMaxSpeech', () => {
       })
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/files/upload')
+      expect(url).toBe('https://api.minimax.io/v1/files/upload')
       expect(options.method).toBe('POST')
       expect(options.duplex).toBe('half')
       expect(options.headers.Authorization).toBe('Bearer test-api-key')
@@ -1018,7 +1070,7 @@ describe('MiniMaxSpeech', () => {
       })
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/voice_clone')
+      expect(url).toBe('https://api.minimax.io/v1/voice_clone')
 
       const body = JSON.parse(options.body as string)
       expect(body.file_id).toBe(12345)
@@ -1118,7 +1170,7 @@ describe('MiniMaxSpeech', () => {
       })
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/voice_design')
+      expect(url).toBe('https://api.minimax.io/v1/voice_design')
 
       const body = JSON.parse(options.body as string)
       expect(body.prompt).toBe('A warm female voice with a slight British accent')
@@ -1185,7 +1237,7 @@ describe('MiniMaxSpeech', () => {
       const result = await client.getVoices({ voiceType: 'all' })
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/get_voice')
+      expect(url).toBe('https://api.minimax.io/v1/get_voice')
 
       const body = JSON.parse(options.body as string)
       expect(body.voice_type).toBe('all')
@@ -1234,7 +1286,7 @@ describe('MiniMaxSpeech', () => {
       })
 
       const [url, options] = mockFetch.mock.calls[0]!
-      expect(url).toBe('https://api.minimaxi.chat/v1/delete_voice')
+      expect(url).toBe('https://api.minimax.io/v1/delete_voice')
 
       const body = JSON.parse(options.body as string)
       expect(body.voice_type).toBe('voice_cloning')
