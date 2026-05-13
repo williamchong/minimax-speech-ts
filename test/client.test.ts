@@ -476,7 +476,7 @@ describe('MiniMaxSpeech', () => {
       )
 
       const client = createClient()
-      const audioStream = await client.synthesizeStream({ text: 'Hello streaming' })
+      const { audio: audioStream } = await client.synthesizeStream({ text: 'Hello streaming' })
 
       const chunks: Buffer[] = []
       const reader = audioStream.getReader()
@@ -508,7 +508,7 @@ describe('MiniMaxSpeech', () => {
       )
 
       const client = createClient()
-      const audioStream = await client.synthesizeStream({ text: 'Test' })
+      const { audio: audioStream } = await client.synthesizeStream({ text: 'Test' })
 
       const chunks: Buffer[] = []
       const reader = audioStream.getReader()
@@ -539,10 +539,37 @@ describe('MiniMaxSpeech', () => {
       )
 
       const client = createClient()
-      const audioStream = await client.synthesizeStream({ text: 'Test' })
+      const { audio: audioStream } = await client.synthesizeStream({ text: 'Test' })
 
       const reader = audioStream.getReader()
       await expect(reader.read()).rejects.toThrow(MiniMaxAuthError)
+    })
+
+    it('should resolve subtitle to undefined when stream errors', async () => {
+      const stream = makeSSEStream([
+        {
+          base_resp: { status_code: 1004, status_msg: 'Unauthorized' },
+          data: { audio: '', status: 0 },
+          trace_id: 'trace-err',
+        },
+      ])
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+
+      const client = createClient()
+      const { audio, subtitle } = await client.synthesizeStream({
+        text: 'Test',
+        subtitleEnable: true,
+      })
+
+      const reader = audio.getReader()
+      await expect(reader.read()).rejects.toThrow(MiniMaxAuthError)
+      expect(await subtitle).toBeUndefined()
     })
 
     it('should throw MiniMaxHttpError on HTTP error', async () => {
@@ -634,7 +661,7 @@ describe('MiniMaxSpeech', () => {
       )
 
       const client = createClient()
-      const audioStream = await client.synthesizeStream({ text: 'Test' })
+      const { audio: audioStream } = await client.synthesizeStream({ text: 'Test' })
 
       const chunks: Buffer[] = []
       const reader = audioStream.getReader()
@@ -646,6 +673,63 @@ describe('MiniMaxSpeech', () => {
 
       expect(chunks).toHaveLength(1)
       expect(chunks[0]!.toString()).toBe('good')
+    })
+
+    it('should resolve subtitle URL from final status 2 chunk', async () => {
+      const audioHex = Buffer.from('a').toString('hex')
+      const stream = makeSSEStream([
+        { data: { audio: audioHex, status: 1 }, trace_id: 't' },
+        {
+          data: { audio: '', status: 2, subtitle_file: 'https://example.com/sub.json' },
+          trace_id: 't',
+        },
+      ])
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+
+      const client = createClient()
+      const { audio, subtitle } = await client.synthesizeStream({
+        text: 'Test',
+        subtitleEnable: true,
+      })
+
+      const reader = audio.getReader()
+      while (true) {
+        const { done } = await reader.read()
+        if (done) break
+      }
+
+      expect(await subtitle).toBe('https://example.com/sub.json')
+    })
+
+    it('should resolve subtitle to undefined when no status 2 chunk seen', async () => {
+      const audioHex = Buffer.from('a').toString('hex')
+      const stream = makeSSEStream([
+        { data: { audio: audioHex, status: 1 }, trace_id: 't' },
+      ])
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+
+      const client = createClient()
+      const { audio, subtitle } = await client.synthesizeStream({ text: 'Test' })
+
+      const reader = audio.getReader()
+      while (true) {
+        const { done } = await reader.read()
+        if (done) break
+      }
+
+      expect(await subtitle).toBeUndefined()
     })
   })
 
@@ -1870,6 +1954,14 @@ describe('MiniMaxSpeech', () => {
         await expect(
           client.designVoice({ prompt: 'test', previewText: '' }),
         ).rejects.toThrow('"previewText" is required')
+        expect(mockFetch).not.toHaveBeenCalled()
+      })
+
+      it('should throw if designVoice previewText exceeds 500 characters', async () => {
+        const client = createClient()
+        await expect(
+          client.designVoice({ prompt: 'test', previewText: 'a'.repeat(501) }),
+        ).rejects.toThrow('"previewText" must be 500 characters or fewer')
         expect(mockFetch).not.toHaveBeenCalled()
       })
 

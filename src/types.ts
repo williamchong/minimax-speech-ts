@@ -84,6 +84,17 @@ export interface SynthesizeUrlResult {
   traceId: string
 }
 
+export interface SynthesizeStreamResult {
+  audio: ReadableStream<Buffer>
+  /**
+   * Resolves to the subtitle file URL once the audio stream finishes, or `undefined` if subtitles
+   * weren't enabled. Resolves to `undefined` (never rejects) when an API-level error chunk arrives.
+   * Will hang if the audio stream is cancelled by the consumer or aborted at the network layer
+   * before the final aggregated chunk arrives.
+   */
+  subtitle: Promise<string | undefined>
+}
+
 // Async T2A types
 export interface AsyncSynthesizeRequest {
   text?: string
@@ -137,10 +148,17 @@ export interface VoiceCloneRequest {
   needVolumeNormalization?: boolean
 }
 
+/**
+ * Content-safety trigger category from voice clone preview synthesis.
+ * 0=normal, 1=severe, 2=pornographic, 3=advertisement, 4=prohibited,
+ * 5=abusive, 6=terror/violence, 7=other.
+ */
+export type InputSensitiveType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+
 export interface VoiceCloneResult {
   /** URL to preview audio; empty when no `text` was provided. */
   demoAudio: string
-  inputSensitive: { type: number }
+  inputSensitive: { type: InputSensitiveType }
   /** Returned only when `text` and `model` are provided (preview synthesis was billed). */
   extraInfo?: ExtraInfo
 }
@@ -166,7 +184,7 @@ export interface SystemVoiceInfo {
   voiceId: string
   voiceName: string
   description: string[]
-  createdTime: string
+  createdTime?: string
 }
 
 export interface VoiceCloningInfo {
@@ -231,6 +249,7 @@ export interface RawStreamChunk {
   data?: {
     audio: string
     status: number
+    subtitle_file?: string
   }
   extra_info?: RawExtraInfo
   trace_id?: string

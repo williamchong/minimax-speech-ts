@@ -20,6 +20,7 @@ import type {
   SynthesizeRequest,
   SynthesizeStreamRequest,
   SynthesizeResult,
+  SynthesizeStreamResult,
   SynthesizeUrlResult,
   ExtraInfo,
   RawSynthesizeResponse,
@@ -33,6 +34,7 @@ import type {
   FileUploadResult,
   VoiceCloneRequest,
   VoiceCloneResult,
+  InputSensitiveType,
   VoiceDesignRequest,
   VoiceDesignResult,
   GetVoiceRequest,
@@ -340,7 +342,7 @@ export class MiniMaxSpeech {
     } satisfies SynthesizeResult
   }
 
-  async synthesizeStream(request: SynthesizeStreamRequest): Promise<ReadableStream<Buffer>> {
+  async synthesizeStream(request: SynthesizeStreamRequest): Promise<SynthesizeStreamResult> {
     validate([
       required(request.text, 'text'),
       ...emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL),
@@ -368,6 +370,11 @@ export class MiniMaxSpeech {
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(new EventSourceParserStream())
 
+    let resolveSubtitle: (url: string | undefined) => void = () => {}
+    const subtitle = new Promise<string | undefined>((resolve) => {
+      resolveSubtitle = resolve
+    })
+
     const audioTransform = new TransformStream<{ data: string; event?: string; id?: string }, Buffer>({
       transform(event, controller) {
         if (!event.data || event.data === '[DONE]') return
@@ -380,6 +387,7 @@ export class MiniMaxSpeech {
         }
 
         if (chunk.base_resp && chunk.base_resp.status_code !== 0) {
+          resolveSubtitle(undefined)
           controller.error(
             createMiniMaxError(
               chunk.base_resp.status_code,
@@ -390,14 +398,22 @@ export class MiniMaxSpeech {
           return
         }
 
-        // status 1 = intermediate chunk with audio, status 2 = final chunk (aggregated)
+        // Final aggregated chunk carries subtitle_file URL when subtitleEnable was set.
+        if (chunk.data?.status === 2) {
+          resolveSubtitle(chunk.data.subtitle_file)
+          return
+        }
         if (chunk.data?.audio && chunk.data.status === 1) {
           controller.enqueue(Buffer.from(chunk.data.audio, 'hex'))
         }
       },
+      flush() {
+        resolveSubtitle(undefined)
+      },
     })
 
-    return sseStream.pipeThrough(audioTransform)
+    const audio = sseStream.pipeThrough(audioTransform)
+    return { audio, subtitle }
   }
 
   async synthesizeAsync(request: AsyncSynthesizeRequest): Promise<AsyncSynthesizeResult> {
@@ -577,7 +593,7 @@ export class MiniMaxSpeech {
 
     const json = await this.postJson<{
       demo_audio: string
-      input_sensitive: { type: number }
+      input_sensitive: { type: InputSensitiveType }
       extra_info?: RawExtraInfo
     }>(API_PATH_VOICE_CLONE, body)
 
@@ -592,6 +608,7 @@ export class MiniMaxSpeech {
     validate([
       required(request.prompt, 'prompt'),
       required(request.previewText, 'previewText'),
+      [request.previewText !== undefined && request.previewText.length > 500, '"previewText" must be 500 characters or fewer'],
     ])
 
     const body: Record<string, unknown> = {
