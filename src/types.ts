@@ -96,15 +96,11 @@ export interface SynthesizeStreamResult {
 }
 
 // Async T2A types
-export interface AsyncSynthesizeRequest {
+export interface AsyncSynthesizeRequest
+  extends Omit<SynthesizeRequest, 'text' | 'timbreWeights' | 'subtitleEnable' | 'subtitleType' | 'outputFormat'> {
+  /** Either `text` or `textFileId` is required (mutually exclusive). */
   text?: string
   textFileId?: number
-  model?: string
-  voiceSetting?: VoiceSetting
-  audioSetting?: AudioSetting
-  languageBoost?: string
-  pronunciationDict?: { tone: string[] }
-  voiceModify?: VoiceModify
 }
 
 export interface AsyncSynthesizeResult {
