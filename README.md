@@ -48,14 +48,14 @@ await fs.promises.writeFile('output.mp3', result.audio) // → output.mp3
 ### Stream audio to a file
 
 ```ts
-const stream = await client.synthesizeStream({
+const { audio } = await client.synthesizeStream({
   text: 'Stream me!',
   voiceSetting: { voiceId: 'English_expressive_narrator' },
   audioSetting: { format: 'mp3' },
 })
 
 const writer = fs.createWriteStream('output.mp3')
-for await (const chunk of stream) writer.write(chunk)
+for await (const chunk of audio) writer.write(chunk)
 writer.end()
 ```
 
@@ -163,25 +163,29 @@ const result = await client.synthesize({
 result.audio // string (URL)
 ```
 
-### `synthesizeStream(request): Promise<ReadableStream<Buffer>>`
+### `synthesizeStream(request): Promise<SynthesizeStreamResult>`
 
-Streaming text-to-speech via SSE. Returns a `ReadableStream` of audio `Buffer` chunks.
+Streaming text-to-speech via SSE. Returns `{ audio, subtitle }` — a `ReadableStream<Buffer>` of audio chunks and a `Promise<string | undefined>` for the subtitle file URL (resolves when the stream ends).
 
 WAV format is not supported in streaming mode.
 
 ```ts
-const stream = await client.synthesizeStream({
+const { audio, subtitle } = await client.synthesizeStream({
   text: 'Hello, streaming world!',
   voiceSetting: { voiceId: 'English_expressive_narrator' },
   audioSetting: { format: 'mp3' },
   streamOptions: { excludeAggregatedAudio: true },
+  subtitleEnable: true,                   // optional
+  subtitleType: 'word_streaming',         // 'word_streaming' is streaming-only
 })
 
 const writer = fs.createWriteStream('output.mp3')
-for await (const chunk of stream) {
+for await (const chunk of audio) {
   writer.write(chunk)
 }
 writer.end()
+
+const subtitleUrl = await subtitle  // undefined unless subtitleEnable was set
 ```
 
 ### `synthesizeAsync(request): Promise<AsyncSynthesizeResult>`
@@ -359,7 +363,6 @@ Client-side validation catches common mistakes before making a request:
 | `speech-02-turbo` | All except fluent, whisper | |
 | `speech-01-hd` | None | |
 | `speech-01-turbo` | None | |
-| `speech-01` | None | Legacy |
 
 ## Use Cases
 

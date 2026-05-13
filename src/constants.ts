@@ -22,7 +22,6 @@ export const MODELS = [
   'speech-02-turbo',
   'speech-01-hd',
   'speech-01-turbo',
-  'speech-01',
 ] as const
 
 export const EMOTIONS = [
@@ -32,7 +31,6 @@ export const EMOTIONS = [
   'fearful',
   'disgusted',
   'surprised',
-  'neutral',
   'calm',
   'fluent',
   'whisper',
