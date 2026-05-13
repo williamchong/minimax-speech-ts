@@ -43,17 +43,15 @@ import type {
   DeleteVoiceResult,
 } from './types.js'
 
-function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
+function toSnakeCase(obj: object): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(obj)) {
     const snakeKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      result[snakeKey] = toSnakeCase(value as Record<string, unknown>)
+      result[snakeKey] = toSnakeCase(value as object)
     } else if (Array.isArray(value)) {
       result[snakeKey] = value.map((item) =>
-        typeof item === 'object' && item !== null
-          ? toSnakeCase(item as Record<string, unknown>)
-          : item,
+        typeof item === 'object' && item !== null ? toSnakeCase(item as object) : item,
       )
     } else {
       result[snakeKey] = value
@@ -173,63 +171,27 @@ function createMultipartStream(
   return { body, contentType: `multipart/form-data; boundary=${boundary}` }
 }
 
+type AnyRequest = Partial<SynthesizeRequest> & Partial<SynthesizeStreamRequest> & Partial<AsyncSynthesizeRequest>
+
 function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest | AsyncSynthesizeRequest): Record<string, unknown> {
-  const { text, model, voiceSetting, audioSetting, languageBoost, pronunciationDict, voiceModify, ...rest } = request
-
+  const r = request as AnyRequest
   const body: Record<string, unknown> = {
-    model: model ?? DEFAULT_MODEL,
+    model: r.model ?? DEFAULT_MODEL,
   }
 
-  if (text !== undefined) body.text = text
-
-  // Handle async-specific textFileId
-  if ('textFileId' in rest && (rest as AsyncSynthesizeRequest).textFileId !== undefined) {
-    body.text_file_id = (rest as AsyncSynthesizeRequest).textFileId
-  }
-
-  if (voiceSetting) {
-    body.voice_setting = toSnakeCase(voiceSetting as unknown as Record<string, unknown>)
-  }
-
-  if (audioSetting) {
-    body.audio_setting = toSnakeCase(audioSetting as unknown as Record<string, unknown>)
-  }
-
-  if (languageBoost !== undefined) {
-    body.language_boost = languageBoost
-  }
-
-  if (pronunciationDict) {
-    body.pronunciation_dict = pronunciationDict
-  }
-
-  if (voiceModify) {
-    body.voice_modify = toSnakeCase(voiceModify as unknown as Record<string, unknown>)
-  }
-
-  if ('timbreWeights' in request && (request as SynthesizeRequest).timbreWeights) {
-    body.timbre_weights = (request as SynthesizeRequest).timbreWeights!.map((tw) =>
-      toSnakeCase(tw as unknown as Record<string, unknown>),
-    )
-  }
-
-  if ('subtitleEnable' in rest && (rest as SynthesizeRequest).subtitleEnable !== undefined) {
-    body.subtitle_enable = (rest as SynthesizeRequest).subtitleEnable
-  }
-  if ('subtitleType' in rest && (rest as SynthesizeRequest).subtitleType !== undefined) {
-    body.subtitle_type = (rest as SynthesizeRequest).subtitleType
-  }
-  if ('outputFormat' in rest && (rest as SynthesizeRequest).outputFormat !== undefined) {
-    body.output_format = (rest as SynthesizeRequest).outputFormat
-  }
-
-  // Handle streaming specific fields
-  if ('streamOptions' in request) {
-    const streamReq = request as SynthesizeStreamRequest
-    if (streamReq.streamOptions) {
-      body.stream_options = toSnakeCase(streamReq.streamOptions as unknown as Record<string, unknown>)
-    }
-  }
+  if (r.text !== undefined) body.text = r.text
+  if (r.textFileId !== undefined) body.text_file_id = r.textFileId
+  if (r.voiceSetting) body.voice_setting = toSnakeCase(r.voiceSetting)
+  if (r.audioSetting) body.audio_setting = toSnakeCase(r.audioSetting)
+  if (r.languageBoost !== undefined) body.language_boost = r.languageBoost
+  // pronunciationDict's shape is already snake-case-safe ({ tone: string[] }); skip toSnakeCase.
+  if (r.pronunciationDict) body.pronunciation_dict = r.pronunciationDict
+  if (r.voiceModify) body.voice_modify = toSnakeCase(r.voiceModify)
+  if (r.timbreWeights) body.timbre_weights = r.timbreWeights.map((tw) => toSnakeCase(tw))
+  if (r.subtitleEnable !== undefined) body.subtitle_enable = r.subtitleEnable
+  if (r.subtitleType !== undefined) body.subtitle_type = r.subtitleType
+  if (r.outputFormat !== undefined) body.output_format = r.outputFormat
+  if (r.streamOptions) body.stream_options = toSnakeCase(r.streamOptions)
 
   return body
 }
@@ -276,24 +238,29 @@ export class MiniMaxSpeech {
     }
   }
 
-  private async postJson<T>(path: string, body: Record<string, unknown>): Promise<T & { baseResp: RawBaseResp; traceId?: string }> {
-    const response = await fetch(this.getUrl(path), {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
-    })
+  private postJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    return this.requestJson(this.getUrl(path), { method: 'POST', headers: this.getHeaders(), body: JSON.stringify(body) })
+  }
 
+  private getJson<T>(path: string, query?: Record<string, string | number>): Promise<T> {
+    let url = this.getUrl(path)
+    if (query) {
+      const params = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])).toString()
+      url = `${url}${url.includes('?') ? '&' : '?'}${params}`
+    }
+    return this.requestJson(url, { method: 'GET', headers: { Authorization: `Bearer ${this.apiKey}` } })
+  }
+
+  private async requestJson<T>(url: string, init: RequestInit): Promise<T> {
+    const response = await fetch(url, init)
     if (!response.ok) {
       throw new MiniMaxHttpError(response.status, response.statusText)
     }
-
     const json = (await response.json()) as Record<string, unknown> & { base_resp: RawBaseResp; trace_id?: string }
-
     if (json.base_resp.status_code !== 0) {
       throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg, json.trace_id)
     }
-
-    return { ...json, baseResp: json.base_resp, traceId: json.trace_id } as unknown as T & { baseResp: RawBaseResp; traceId?: string }
+    return json as unknown as T
   }
 
   async synthesize(request: SynthesizeRequest & { outputFormat: 'url' }): Promise<SynthesizeUrlResult>
@@ -443,32 +410,11 @@ export class MiniMaxSpeech {
   }
 
   async querySynthesizeAsync(taskId: number): Promise<AsyncSynthesizeQueryResult> {
-    const url = this.getUrl(API_PATH_T2A_ASYNC_QUERY)
-    const separator = url.includes('?') ? '&' : '?'
-    const fullUrl = `${url}${separator}task_id=${encodeURIComponent(taskId)}`
-
-    const response = await fetch(fullUrl, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-    })
-
-    if (!response.ok) {
-      throw new MiniMaxHttpError(response.status, response.statusText)
-    }
-
-    const json = (await response.json()) as {
+    const json = await this.getJson<{
       task_id: number
       status: 'success' | 'failed' | 'expired' | 'processing'
       file_id: number
-      base_resp: RawBaseResp
-      trace_id?: string
-    }
-
-    if (json.base_resp.status_code !== 0) {
-      throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg, json.trace_id)
-    }
+    }>(API_PATH_T2A_ASYNC_QUERY, { task_id: taskId })
 
     return {
       taskId: json.task_id,

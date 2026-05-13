@@ -200,7 +200,7 @@ const task = await client.synthesizeAsync({
   voiceSetting: { voiceId: 'English_expressive_narrator' },
 })
 
-task.taskId           // string
+task.taskId           // number
 task.fileId           // number
 task.taskToken        // string
 task.usageCharacters  // number
@@ -208,7 +208,7 @@ task.usageCharacters  // number
 
 ### `querySynthesizeAsync(taskId): Promise<AsyncSynthesizeQueryResult>`
 
-Poll the status of an async synthesis task.
+Poll the status of an async synthesis task. The generated download URL is valid for **9 hours** after success — make sure to download the file within that window.
 
 ```ts
 const status = await client.querySynthesizeAsync(task.taskId)
@@ -363,6 +363,27 @@ Client-side validation catches common mistakes before making a request:
 | `speech-02-turbo` | All except fluent, whisper | |
 | `speech-01-hd` | None | |
 | `speech-01-turbo` | None | |
+
+## Text Features
+
+The `text` field supports inline markup beyond plain content:
+
+- **Pause control** — insert `<#x#>` between text segments to pause for `x` seconds (range `0.01–99.99`). Example: `Hello<#0.5#>world.`
+- **Inline pronunciation** — override the pronunciation of a word with Mandarin pinyin (tones 1–5), IPA, or Cantonese jyutping (tones 1–6), wrapped in half-width parentheses immediately after the word:
+  - `The word live is pronounced (lɪv) as a verb and (laɪv) as an adjective.`
+  - `This is (he2)平, not (huo4)面.`
+  - `去街市買啲(sung3)。`
+- **Interjection tags** *(`speech-2.8-hd` / `speech-2.8-turbo` only)* — embed natural speech sounds: `(laughs)`, `(chuckle)`, `(coughs)`, `(clear-throat)`, `(groans)`, `(breath)`, `(pant)`, `(inhale)`, `(exhale)`, `(gasps)`, `(sniffs)`, `(sighs)`, `(snorts)`, `(burps)`, `(lip-smacking)`, `(humming)`, `(hissing)`, `(emm)`, `(sneezes)`.
+
+## Rate Limits
+
+The API enforces these limits per account; the SDK surfaces `429`-equivalent responses as `MiniMaxRateLimitError`. Build your own retry/backoff on top.
+
+| Endpoint | Limit |
+|----------|-------|
+| `synthesize` / `synthesizeStream` / voice cloning | 60 RPM |
+| `designVoice` | 20 RPM |
+| `querySynthesizeAsync` | 10 QPS |
 
 ## Use Cases
 
