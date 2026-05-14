@@ -9,6 +9,10 @@ import {
   API_PATH_T2A_ASYNC,
   API_PATH_T2A_ASYNC_QUERY,
   API_PATH_FILE_UPLOAD,
+  API_PATH_FILE_LIST,
+  API_PATH_FILE_RETRIEVE,
+  API_PATH_FILE_RETRIEVE_CONTENT,
+  API_PATH_FILE_DELETE,
   API_PATH_VOICE_CLONE,
   API_PATH_VOICE_DESIGN,
   API_PATH_GET_VOICE,
@@ -28,11 +32,18 @@ import type {
   RawStreamChunk,
   RawExtraInfo,
   RawBaseResp,
+  RawFile,
   AsyncSynthesizeRequest,
   AsyncSynthesizeResult,
   AsyncSynthesizeQueryResult,
   FilePurpose,
+  FileInfo,
   FileUploadResult,
+  ListFilesRequest,
+  ListFilesResult,
+  RetrieveFileResult,
+  DeleteFileRequest,
+  DeleteFileResult,
   VoiceCloneRequest,
   VoiceCloneResult,
   InputSensitiveType,
@@ -59,6 +70,16 @@ function toSnakeCase(obj: object): Record<string, unknown> {
     }
   }
   return result
+}
+
+function mapFileInfo(raw: RawFile): FileInfo {
+  return {
+    fileId: raw.file_id,
+    bytes: raw.bytes,
+    createdAt: raw.created_at,
+    filename: raw.filename,
+    purpose: raw.purpose,
+  }
 }
 
 function parseVoiceCloneExtraInfo(raw: RawExtraInfo): VoiceCloneExtraInfo {
@@ -261,13 +282,18 @@ export class MiniMaxSpeech {
     return this.requestJson(this.getUrl(path), { method: 'POST', headers: this.getHeaders(), body: JSON.stringify(body) })
   }
 
+  private buildUrl(path: string, query?: Record<string, string | number>): string {
+    const url = this.getUrl(path)
+    if (!query) return url
+    const params = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])).toString()
+    return `${url}${url.includes('?') ? '&' : '?'}${params}`
+  }
+
   private getJson<T>(path: string, query?: Record<string, string | number>): Promise<T> {
-    let url = this.getUrl(path)
-    if (query) {
-      const params = new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])).toString()
-      url = `${url}${url.includes('?') ? '&' : '?'}${params}`
-    }
-    return this.requestJson(url, { method: 'GET', headers: { Authorization: `Bearer ${this.apiKey}` } })
+    return this.requestJson(this.buildUrl(path, query), {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.apiKey}` },
+    })
   }
 
   private async requestJson<T>(url: string, init: RequestInit): Promise<T> {
@@ -478,8 +504,8 @@ export class MiniMaxSpeech {
 
     validate([
       [
-        purpose !== 'voice_clone' && purpose !== 'prompt_audio',
-        `"purpose" must be "voice_clone" or "prompt_audio", got "${purpose}"`,
+        purpose !== 'voice_clone' && purpose !== 'prompt_audio' && purpose !== 't2a_async_input',
+        `"purpose" must be "voice_clone", "prompt_audio", or "t2a_async_input", got "${purpose}"`,
       ],
       [
         isStream && !options?.filename,
@@ -521,13 +547,7 @@ export class MiniMaxSpeech {
     }
 
     const json = (await response.json()) as {
-      file: {
-        file_id: number
-        bytes: number
-        created_at: number
-        filename: string
-        purpose: string
-      }
+      file: RawFile
       base_resp: RawBaseResp
     }
 
@@ -535,15 +555,66 @@ export class MiniMaxSpeech {
       throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg)
     }
 
-    return {
-      file: {
-        fileId: json.file.file_id,
-        bytes: json.file.bytes,
-        createdAt: json.file.created_at,
-        filename: json.file.filename,
-        purpose: json.file.purpose,
-      },
+    return { file: mapFileInfo(json.file) }
+  }
+
+  async listFiles(request: ListFilesRequest): Promise<ListFilesResult> {
+    validate([required(request.purpose, 'purpose')])
+
+    const json = await this.getJson<{ files: RawFile[] }>(API_PATH_FILE_LIST, {
+      purpose: request.purpose,
+    })
+
+    return { files: (json.files ?? []).map(mapFileInfo) }
+  }
+
+  async retrieveFile(fileId: number): Promise<RetrieveFileResult> {
+    validate([required(fileId, 'fileId')])
+
+    const json = await this.getJson<{ file: RawFile }>(API_PATH_FILE_RETRIEVE, {
+      file_id: fileId,
+    })
+
+    return { file: mapFileInfo(json.file) }
+  }
+
+  // Success body is binary; on error the API returns JSON with base_resp — sniff Content-Type to disambiguate.
+  async retrieveFileContent(fileId: number): Promise<Buffer> {
+    validate([required(fileId, 'fileId')])
+
+    const response = await fetch(this.buildUrl(API_PATH_FILE_RETRIEVE_CONTENT, { file_id: fileId }), {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${this.apiKey}` },
+    })
+
+    if (!response.ok) {
+      throw new MiniMaxHttpError(response.status, response.statusText)
     }
+
+    const contentType = response.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      const json = (await response.json()) as { base_resp?: RawBaseResp; trace_id?: string }
+      if (json.base_resp && json.base_resp.status_code !== 0) {
+        throw createMiniMaxError(json.base_resp.status_code, json.base_resp.status_msg, json.trace_id)
+      }
+      throw new Error('Unexpected JSON response from /v1/files/retrieve_content')
+    }
+
+    return Buffer.from(await response.arrayBuffer())
+  }
+
+  async deleteFile(request: DeleteFileRequest): Promise<DeleteFileResult> {
+    validate([
+      required(request.fileId, 'fileId'),
+      required(request.purpose, 'purpose'),
+    ])
+
+    const json = await this.postJson<{ file_id: number }>(API_PATH_FILE_DELETE, {
+      file_id: request.fileId,
+      purpose: request.purpose,
+    })
+
+    return { fileId: json.file_id }
   }
 
   async cloneVoice(request: VoiceCloneRequest): Promise<VoiceCloneResult> {

@@ -221,7 +221,7 @@ status.fileId  // number (download file ID when status is 'success')
 
 ### `uploadFile(file, purpose, options?): Promise<FileUploadResult>`
 
-Upload an audio file for voice cloning. Accepts a `Blob` or a `ReadableStream<Uint8Array>`.
+Upload a file. `purpose` is one of `voice_clone`, `prompt_audio` (audio samples for voice cloning), or `t2a_async_input` (a text file feeding `synthesizeAsync`). Accepts a `Blob` or a `ReadableStream<Uint8Array>`.
 
 ```ts
 // Blob upload (buffered)
@@ -244,6 +244,45 @@ const upload = await client.uploadFile(stream, 'voice_clone', {
   filename: 'big-voice.wav',
   contentType: 'audio/wav',  // optional, defaults to 'application/octet-stream'
 })
+```
+
+### `listFiles(request): Promise<ListFilesResult>`
+
+List files filtered by `purpose` (`voice_clone`, `prompt_audio`, or `t2a_async_input`).
+
+```ts
+const { files } = await client.listFiles({ purpose: 'voice_clone' })
+files[0].fileId    // number
+files[0].filename  // string
+files[0].bytes     // number
+```
+
+### `retrieveFile(fileId): Promise<RetrieveFileResult>`
+
+Retrieve metadata for a single file.
+
+```ts
+const { file } = await client.retrieveFile(12345)
+file.bytes     // number
+file.purpose   // string
+file.createdAt // number — unix seconds
+```
+
+### `retrieveFileContent(fileId): Promise<Buffer>`
+
+Download the file bytes. Useful for fetching async-synthesis output once `querySynthesizeAsync` returns `status: 'success'`.
+
+```ts
+const audio = await client.retrieveFileContent(task.fileId)
+await fs.promises.writeFile('output.mp3', audio)
+```
+
+### `deleteFile(request): Promise<DeleteFileResult>`
+
+Delete a file. `purpose` accepts the upload purposes plus `t2a_async` (async synthesis output) and `video_generation`.
+
+```ts
+await client.deleteFile({ fileId: 12345, purpose: 't2a_async' })
 ```
 
 ### `cloneVoice(request): Promise<VoiceCloneResult>`
