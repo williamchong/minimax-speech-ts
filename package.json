@@ -1,6 +1,6 @@
 {
   "name": "minimax-speech-ts",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Type-safe MiniMax TTS client for Node.js — sync & streaming synthesis, voice cloning, voice design. ESM + CJS.",
   "type": "module",
   "main": "./dist/index.cjs",

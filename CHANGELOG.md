@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 (2026-05-14)
+
+### Features
+
+- **File management APIs** — `listFiles`, `retrieveFile`, `retrieveFileContent`, and `deleteFile` cover the remaining MiniMax File Management endpoints (`/v1/files/list`, `/retrieve`, `/retrieve_content`, `/delete`). `retrieveFileContent` returns a `Buffer` and sniffs `Content-Type` to surface JSON-encoded API errors instead of returning bogus binary.
+- **`FilePurpose` widened to include `'t2a_async_input'`** — text inputs for `synthesizeAsync` now share the `uploadFile` path. The runtime validator in `uploadFile` accepts the new value.
+- **`DeleteFilePurpose` type** — superset of `FilePurpose` that also includes `'t2a_async'` (async synthesis output) and `'video_generation'`, matching the broader set of purposes the delete endpoint accepts.
+- **New exported types** — `FileInfo`, `ListFilesRequest`, `ListFilesResult`, `RetrieveFileResult`, `DeleteFileRequest`, `DeleteFileResult`, `DeleteFilePurpose`.
+- **New exported constants** — `API_PATH_FILE_LIST`, `API_PATH_FILE_RETRIEVE`, `API_PATH_FILE_RETRIEVE_CONTENT`, `API_PATH_FILE_DELETE`.
+
+### Internal
+
+- Extracted `buildUrl(path, query)` from `getJson` so it can be reused by the new binary-returning `retrieveFileContent`.
+- Collapsed the `uploadFile` response shape onto a shared `RawFile` / `FileInfo` pair via a new `mapFileInfo` helper, eliminating the inline anonymous response type.
+- Bumped `eventsource-parser` 3.0.6 → 3.0.8 in the lockfile (declared range unchanged).
+- README documents the four new file management endpoints.
+
 ## 0.3.0 (2026-05-14)
 
 ### Breaking Changes
