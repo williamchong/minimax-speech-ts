@@ -269,7 +269,8 @@ export class MiniMaxSpeech {
     validate([
       required(request.text, 'text'),
       ...emotionRules(request.voiceSetting?.emotion, request.model ?? DEFAULT_MODEL),
-      [request.subtitleType === 'word_streaming', '"word_streaming" subtitle type is only valid in streaming mode'],
+      // Belt-and-suspenders for JS callers; TS callers are already blocked by the narrowed type.
+      [String(request.subtitleType) === 'word_streaming', '"word_streaming" subtitle type is only valid in streaming mode'],
     ])
 
     const body = buildRequestBody(request)
@@ -333,53 +334,66 @@ export class MiniMaxSpeech {
       throw new Error('Response body is null')
     }
 
-    const sseStream = response.body
+    const sseReader = response.body
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(new EventSourceParserStream())
+      .getReader()
 
-    let resolveSubtitle: (url: string | undefined) => void = () => {}
+    let resolveSubtitle!: (url: string | undefined) => void
     const subtitle = new Promise<string | undefined>((resolve) => {
       resolveSubtitle = resolve
     })
 
-    const audioTransform = new TransformStream<{ data: string; event?: string; id?: string }, Buffer>({
-      transform(event, controller) {
-        if (!event.data || event.data === '[DONE]') return
-
-        let chunk: RawStreamChunk
+    // Build the audio ReadableStream by hand so we can settle `subtitle` on every
+    // completion path: status-2 chunk (with URL), normal end, API error, transport
+    // error, and consumer cancel. TransformStream's flush() doesn't run on the last
+    // two, which is what made the earlier pipeThrough version leak pending promises.
+    const audio = new ReadableStream<Buffer>({
+      async pull(controller) {
         try {
-          chunk = JSON.parse(event.data) as RawStreamChunk
-        } catch {
-          return
-        }
+          for (;;) {
+            const { done, value: event } = await sseReader.read()
+            if (done) {
+              resolveSubtitle(undefined)
+              controller.close()
+              return
+            }
+            if (!event.data || event.data === '[DONE]') continue
 
-        if (chunk.base_resp && chunk.base_resp.status_code !== 0) {
+            let chunk: RawStreamChunk
+            try {
+              chunk = JSON.parse(event.data) as RawStreamChunk
+            } catch {
+              continue
+            }
+
+            if (chunk.base_resp && chunk.base_resp.status_code !== 0) {
+              resolveSubtitle(undefined)
+              controller.error(createMiniMaxError(chunk.base_resp.status_code, chunk.base_resp.status_msg, chunk.trace_id))
+              return
+            }
+
+            // Final aggregated chunk carries subtitle_file URL when subtitleEnable was set.
+            if (chunk.data?.status === 2) {
+              resolveSubtitle(chunk.data.subtitle_file)
+              continue
+            }
+            if (chunk.data?.audio && chunk.data.status === 1) {
+              controller.enqueue(Buffer.from(chunk.data.audio, 'hex'))
+              return
+            }
+          }
+        } catch (err) {
           resolveSubtitle(undefined)
-          controller.error(
-            createMiniMaxError(
-              chunk.base_resp.status_code,
-              chunk.base_resp.status_msg,
-              chunk.trace_id,
-            ),
-          )
-          return
-        }
-
-        // Final aggregated chunk carries subtitle_file URL when subtitleEnable was set.
-        if (chunk.data?.status === 2) {
-          resolveSubtitle(chunk.data.subtitle_file)
-          return
-        }
-        if (chunk.data?.audio && chunk.data.status === 1) {
-          controller.enqueue(Buffer.from(chunk.data.audio, 'hex'))
+          controller.error(err)
         }
       },
-      flush() {
+      async cancel(reason) {
         resolveSubtitle(undefined)
+        await sseReader.cancel(reason)
       },
     })
 
-    const audio = sseStream.pipeThrough(audioTransform)
     return { audio, subtitle }
   }
 
@@ -409,7 +423,7 @@ export class MiniMaxSpeech {
     }
   }
 
-  async querySynthesizeAsync(taskId: number): Promise<AsyncSynthesizeQueryResult> {
+  async querySynthesizeAsync(taskId: number | string): Promise<AsyncSynthesizeQueryResult> {
     const json = await this.getJson<{
       task_id: number
       status: 'success' | 'failed' | 'expired' | 'processing'
@@ -554,7 +568,7 @@ export class MiniMaxSpeech {
     validate([
       required(request.prompt, 'prompt'),
       required(request.previewText, 'previewText'),
-      [request.previewText !== undefined && request.previewText.length > 500, '"previewText" must be 500 characters or fewer'],
+      [(request.previewText?.length ?? 0) > 500, '"previewText" must be 500 characters or fewer'],
     ])
 
     const body: Record<string, unknown> = {
