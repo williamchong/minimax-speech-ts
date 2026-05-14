@@ -157,7 +157,7 @@ describe('MiniMaxSpeech', () => {
         voiceSetting: {
           voiceId: 'male-qn-qingse',
           speed: 1.0,
-          emotion: 'neutral',
+          emotion: 'calm',
         },
         audioSetting: {
           sampleRate: 32000,
@@ -174,7 +174,7 @@ describe('MiniMaxSpeech', () => {
       expect(body.voice_setting).toEqual({
         voice_id: 'male-qn-qingse',
         speed: 1.0,
-        emotion: 'neutral',
+        emotion: 'calm',
       })
       expect(body.audio_setting).toEqual({
         sample_rate: 32000,
@@ -182,6 +182,27 @@ describe('MiniMaxSpeech', () => {
       })
       expect(body.language_boost).toBe('Chinese,Yue')
     })
+
+    it.each(['pcmu_raw', 'pcmu_wav', 'opus'] as const)(
+      'should serialize new audio format %s to the wire',
+      async (format) => {
+        mockFetch.mockResolvedValueOnce(
+          makeResponse({
+            base_resp: { status_code: 0, status_msg: 'success' },
+            data: { audio: '', status: 2 },
+            extra_info: baseExtraInfo,
+            trace_id: 'trace-fmt',
+          }),
+        )
+
+        const client = createClient()
+        await client.synthesize({ text: 'Test', audioSetting: { format } })
+
+        const [, options] = mockFetch.mock.calls[0]!
+        const body = JSON.parse(options.body as string)
+        expect(body.audio_setting.format).toBe(format)
+      },
+    )
 
     it('should return decoded audio buffer', async () => {
       const originalData = 'test audio data'
@@ -979,7 +1000,7 @@ describe('MiniMaxSpeech', () => {
       expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?GroupId=grp-1&task_id=42')
     })
 
-    it('should accept a string taskId and URL-encode it', async () => {
+    it('should accept a string taskId', async () => {
       mockFetch.mockResolvedValueOnce(
         makeJsonResponse({
           base_resp: { status_code: 0, status_msg: 'success' },
