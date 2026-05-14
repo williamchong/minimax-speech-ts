@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.3.0 (2026-05-14)
+
+### Breaking Changes
+
+- **`synthesizeStream` now returns `{ audio, subtitle }`** instead of `ReadableStream<Buffer>`. `audio` is the existing chunk stream; `subtitle` is a `Promise<string | undefined>` that resolves to the subtitle file URL emitted in the final aggregated chunk (or `undefined` when subtitles weren't enabled or the stream errored — it never rejects, since the underlying error already surfaces through the audio stream). Update consumers from `const audio = await client.synthesizeStream(req)` to `const { audio, subtitle } = await client.synthesizeStream(req)`.
+- **Default `apiHost` changed** from `api.minimaxi.chat` to `api.minimax.io` to match current MiniMax documentation. Callers relying on the default will hit the new host; pass `apiHost` explicitly to pin the old one. The README also mentions `api-uw.minimax.io` for reduced TTFA from US/EU.
+- **`AsyncSynthesizeResult.taskId` is now `number`** (was `string`) to match the wire contract and `AsyncSynthesizeQueryResult.taskId`. `querySynthesizeAsync(taskId)` accepts both `string | number` for back-compat with callers that persisted task IDs as strings.
+- **Removed deprecated constants** — `'speech-01'` dropped from `MODELS` and `'neutral'` dropped from `EMOTIONS`; neither appears in current MiniMax docs.
+
+### Features
+
+- **PCMU and Opus audio formats** — `pcmu_raw` and `pcmu_wav` (G.711 μ-law) and `opus` added to `AUDIO_FORMATS`.
+- **`subtitleType` field** — `'sentence' | 'word' | 'word_streaming'`. Non-streaming `synthesize` rejects `word_streaming` at validation time. `SynthesizeStreamRequest` no longer omits `subtitleEnable`, so both `subtitleEnable` and `subtitleType` can be passed to the streaming API.
+- **Stream subtitle access** — alongside the new return shape, `synthesizeStream` consumers can now read the subtitle file URL emitted in the final aggregated SSE chunk without parsing the stream themselves.
+- **`InputSensitiveType` type** — `0`–`7` literal union replaces bare `number` on the voice-clone response, with each category documented inline.
+- **`cloneVoice` exposes `extraInfo`** — preview-synthesis billing fields (`audioLength`, `wordCount`, `usageCharacters`, `invisibleCharacterRatio`) are now surfaced via `VoiceCloneResult.extraInfo`.
+- **`designVoice` validates `previewText`** — rejects strings longer than 500 characters before the request is sent.
+
+### Bug Fixes
+
+- **`synthesizeAsync` field names corrected** — now sends `audio_sample_rate` (was `sample_rate`) and `english_normalization` (was `text_normalization`) per the async schema. Previous calls silently fell back to server defaults for those fields.
+- **Stream subtitle promise settles on every path** — `synthesizeStream` was rebuilt on a hand-rolled `ReadableStream` so the subtitle promise resolves on normal end, API error, transport error, and consumer cancel. The previous `pipeThrough` version could leave it pending forever on cancel or network error.
+- **Error classification gaps closed** — added codes `2042` (auth), `2056` (rate limit), and `1008` / `1026` / `1027` / `1043` / `1044` (validation) per the MiniMax errorcode docs.
+- **`synthesizeAsync` runtime body defense** — `subtitle_enable`, `subtitle_type`, `output_format`, `stream_options`, and `timbre_weights` are now stripped from async bodies at runtime. TypeScript already excludes them, but the shared body builder's permissive cast could let JS callers smuggle them past the type system.
+- **`parseExtraInfo` no longer lies about missing fields** — throws when the t2a server omits `audio_format` or `audio_channel`, instead of smuggling `undefined` through string-typed fields via a non-null assertion.
+- **`designVoice` tolerates `null` `previewText`** from JS callers — returns the friendly required-field error instead of a `TypeError`.
+- **README fixes** — `demoAudio` documented as URL (not hex-encoded audio); stale `taskId // string` comment corrected.
+
+### Internal
+
+- `ExtraInfo` split into a `VoiceCloneExtraInfo` base type (the narrower subset voice-clone preview returns) and the t2a-specific `ExtraInfo` which re-declares `audioFormat` and `audioChannel` as required. New `parseVoiceCloneExtraInfo` helper.
+- `SynthesizeRequest.subtitleType` narrowed to exclude `'word_streaming'`; `SynthesizeStreamRequest` re-declares it with the full union. The runtime check for `word_streaming` in non-streaming synthesis is now unreachable from TypeScript and kept only as a defense against JS callers.
+- `SystemVoiceInfo.createdTime` made optional — docs don't list it for system voices.
+- `buildRequestBody` collapsed to a single `Partial<A & B & C>` cast, dropping ~30 lines of branchy field-passthrough.
+- Centralized HTTP handling in a private `requestJson<T>`; `postJson` and new `getJson<T>` are thin wrappers. `querySynthesizeAsync` shrinks from 27 lines to 8.
+- `AsyncSynthesizeRequest` now `extends Omit<SynthesizeRequest, ...>` so async stays in sync as the sync request type evolves.
+- `toSnakeCase` parameter relaxed to `object`, removing per-call-site casts.
+- Test coverage backfilled for `pcmu_raw`, `pcmu_wav`, and `opus` serialization; obsolete `'neutral'` emotion replaced with `'calm'`; stale "URL-encode" test name corrected.
+- README adds Text Features (pause control, inline pronunciation, 2.8-only interjection tags) and Rate Limits sections; notes the 9-hour async download URL expiry.
+
 ## 0.2.0 (2026-04-10)
 
 ### Features
