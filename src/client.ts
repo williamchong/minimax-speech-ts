@@ -23,6 +23,7 @@ import type {
   SynthesizeStreamResult,
   SynthesizeUrlResult,
   ExtraInfo,
+  VoiceCloneExtraInfo,
   RawSynthesizeResponse,
   RawStreamChunk,
   RawExtraInfo,
@@ -60,7 +61,7 @@ function toSnakeCase(obj: object): Record<string, unknown> {
   return result
 }
 
-function parseExtraInfo(raw: RawExtraInfo): ExtraInfo {
+function parseVoiceCloneExtraInfo(raw: RawExtraInfo): VoiceCloneExtraInfo {
   return {
     audioLength: raw.audio_length,
     audioSampleRate: raw.audio_sample_rate,
@@ -69,6 +70,17 @@ function parseExtraInfo(raw: RawExtraInfo): ExtraInfo {
     wordCount: raw.word_count,
     invisibleCharacterRatio: raw.invisible_character_ratio,
     usageCharacters: raw.usage_characters,
+  }
+}
+
+function parseExtraInfo(raw: RawExtraInfo): ExtraInfo {
+  // t2a always returns audio_format and audio_channel per the API contract.
+  // Crash at parse time rather than smuggling undefined through a `string`-typed field.
+  if (raw.audio_format === undefined || raw.audio_channel === undefined) {
+    throw new Error('MiniMax t2a response missing audio_format or audio_channel in extra_info')
+  }
+  return {
+    ...parseVoiceCloneExtraInfo(raw),
     audioFormat: raw.audio_format,
     audioChannel: raw.audio_channel,
   }
@@ -196,10 +208,12 @@ function buildRequestBody(request: SynthesizeRequest | SynthesizeStreamRequest |
   return body
 }
 
-// Async /v1/t2a_async_v2 expects audio_sample_rate (not sample_rate) and
-// english_normalization (not text_normalization). Patch the snake-cased body
-// produced by buildRequestBody.
-function renameAsyncFields(body: Record<string, unknown>): void {
+// Async /v1/t2a_async_v2 differs from sync /v1/t2a_v2 in two ways:
+// (1) different field names (audio_sample_rate, english_normalization) and
+// (2) doesn't accept subtitle / output_format / stream_options / timbre_weights.
+// TS types already exclude (2) on AsyncSynthesizeRequest, but buildRequestBody's
+// permissive cast can let JS callers smuggle them in — strip defensively.
+function fixupAsyncBody(body: Record<string, unknown>): void {
   const audio = body.audio_setting as Record<string, unknown> | undefined
   if (audio && 'sample_rate' in audio) {
     audio.audio_sample_rate = audio.sample_rate
@@ -210,6 +224,11 @@ function renameAsyncFields(body: Record<string, unknown>): void {
     voice.english_normalization = voice.text_normalization
     delete voice.text_normalization
   }
+  delete body.subtitle_enable
+  delete body.subtitle_type
+  delete body.output_format
+  delete body.stream_options
+  delete body.timbre_weights
 }
 
 export class MiniMaxSpeech {
@@ -406,7 +425,7 @@ export class MiniMaxSpeech {
     ])
 
     const body = buildRequestBody(request)
-    renameAsyncFields(body)
+    fixupAsyncBody(body)
 
     const json = await this.postJson<{
       task_id: number
@@ -560,7 +579,7 @@ export class MiniMaxSpeech {
     return {
       demoAudio: json.demo_audio,
       inputSensitive: json.input_sensitive,
-      extraInfo: json.extra_info ? parseExtraInfo(json.extra_info) : undefined,
+      extraInfo: json.extra_info ? parseVoiceCloneExtraInfo(json.extra_info) : undefined,
     }
   }
 

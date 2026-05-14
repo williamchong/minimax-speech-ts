@@ -38,6 +38,7 @@ export type {
   SynthesizeStreamResult,
   SynthesizeUrlResult,
   ExtraInfo,
+  VoiceCloneExtraInfo,
   VoiceSetting,
   AudioSetting,
   VoiceModify,
