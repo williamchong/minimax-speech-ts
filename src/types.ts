@@ -128,17 +128,48 @@ export interface AsyncSynthesizeQueryResult {
   fileId: number
 }
 
-// File upload types
-export type FilePurpose = 'voice_clone' | 'prompt_audio'
+// File management types
+
+/** Purposes accepted by file upload and list filtering. */
+export type FilePurpose = 'voice_clone' | 'prompt_audio' | 't2a_async_input'
+
+/**
+ * Purposes accepted by file delete. Includes upload-side purposes plus
+ * `t2a_async` (async synthesis output) and `video_generation`.
+ */
+export type DeleteFilePurpose = FilePurpose | 't2a_async' | 'video_generation'
+
+export interface FileInfo {
+  fileId: number
+  bytes: number
+  createdAt: number
+  filename: string
+  purpose: string
+}
 
 export interface FileUploadResult {
-  file: {
-    fileId: number
-    bytes: number
-    createdAt: number
-    filename: string
-    purpose: string
-  }
+  file: FileInfo
+}
+
+export interface ListFilesRequest {
+  purpose: FilePurpose
+}
+
+export interface ListFilesResult {
+  files: FileInfo[]
+}
+
+export interface RetrieveFileResult {
+  file: FileInfo
+}
+
+export interface DeleteFileRequest {
+  fileId: number
+  purpose: DeleteFilePurpose
+}
+
+export interface DeleteFileResult {
+  fileId: number
 }
 
 // Voice clone types
@@ -224,6 +255,14 @@ export interface DeleteVoiceResult {
 }
 
 // Internal types for raw API responses (snake_case)
+export interface RawFile {
+  file_id: number
+  bytes: number
+  created_at: number
+  filename: string
+  purpose: string
+}
+
 export interface RawBaseResp {
   status_code: number
   status_msg: string

@@ -80,6 +80,14 @@ const baseExtraInfo = {
   audio_channel: 1,
 }
 
+const baseRawFile = {
+  file_id: 1,
+  bytes: 10,
+  created_at: 1700000000,
+  filename: 'a.mp3',
+  purpose: 'voice_clone',
+}
+
 describe('MiniMaxSpeech', () => {
   describe('constructor', () => {
     it('should use default API host', () => {
@@ -1291,6 +1299,272 @@ describe('MiniMaxSpeech', () => {
         client.uploadFile(upstream, 'voice_clone', { filename: 'x.bin' }),
       ).rejects.toThrow('fetch aborted')
       expect(cancelReason).toBe('aborted')
+    })
+
+    it('should accept t2a_async_input purpose', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          file: {
+            file_id: 7,
+            bytes: 12,
+            created_at: 1700000000,
+            filename: 'long.txt',
+            purpose: 't2a_async_input',
+          },
+        }),
+      )
+
+      const client = createClient()
+      const blob = new Blob(['some long text'], { type: 'text/plain' })
+      const result = await client.uploadFile(blob, 't2a_async_input')
+      expect(result.file.purpose).toBe('t2a_async_input')
+      expect(result.file.fileId).toBe(7)
+    })
+  })
+
+  describe('listFiles', () => {
+    it('should GET with purpose query param and map response', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          files: [
+            baseRawFile,
+            { ...baseRawFile, file_id: 2, bytes: 20, created_at: 1700000001, filename: 'b.mp3' },
+          ],
+        }),
+      )
+
+      const client = createClient()
+      const result = await client.listFiles({ purpose: 'voice_clone' })
+
+      const [url, options] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://api.minimax.io/v1/files/list?purpose=voice_clone')
+      expect(options.method).toBe('GET')
+      expect(options.headers.Authorization).toBe('Bearer test-api-key')
+
+      expect(result.files).toHaveLength(2)
+      expect(result.files[0]).toEqual({
+        fileId: 1, bytes: 10, createdAt: 1700000000, filename: 'a.mp3', purpose: 'voice_clone',
+      })
+    })
+
+    it('should default to empty array when files field is missing', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({ base_resp: { status_code: 0, status_msg: 'success' } }),
+      )
+
+      const client = createClient()
+      const result = await client.listFiles({ purpose: 'prompt_audio' })
+      expect(result.files).toEqual([])
+    })
+
+    it('should append GroupId alongside the purpose query param', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          files: [],
+        }),
+      )
+
+      const client = createClient({ groupId: 'g-1' })
+      await client.listFiles({ purpose: 'voice_clone' })
+
+      const [url] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://api.minimax.io/v1/files/list?GroupId=g-1&purpose=voice_clone')
+    })
+
+    it('should throw on API error', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 1004, status_msg: 'Auth failed' },
+        }),
+      )
+
+      const client = createClient()
+      await expect(client.listFiles({ purpose: 'voice_clone' })).rejects.toThrow(MiniMaxAuthError)
+    })
+
+    it('should reject missing purpose', async () => {
+      const client = createClient()
+      await expect(
+        client.listFiles({} as unknown as Parameters<typeof client.listFiles>[0]),
+      ).rejects.toThrow('"purpose" is required')
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('retrieveFile', () => {
+    it('should GET with file_id query param and map response', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          file: { ...baseRawFile, file_id: 42, bytes: 100, filename: 'voice.mp3' },
+        }),
+      )
+
+      const client = createClient()
+      const result = await client.retrieveFile(42)
+
+      const [url, options] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://api.minimax.io/v1/files/retrieve?file_id=42')
+      expect(options.method).toBe('GET')
+      expect(result.file.fileId).toBe(42)
+      expect(result.file.filename).toBe('voice.mp3')
+    })
+
+    it('should throw MiniMaxValidationError on a 2013 error code', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 2013, status_msg: 'invalid params' },
+          file: { file_id: 0, bytes: 0, created_at: 0, filename: '', purpose: '' },
+        }),
+      )
+
+      const client = createClient()
+      await expect(client.retrieveFile(999)).rejects.toThrow(MiniMaxValidationError)
+    })
+
+    it('should reject missing fileId', async () => {
+      const client = createClient()
+      await expect(
+        client.retrieveFile(undefined as unknown as number),
+      ).rejects.toThrow('"fileId" is required')
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('retrieveFileContent', () => {
+    it('should return binary content as a Buffer', async () => {
+      const payload = new Uint8Array([0x49, 0x44, 0x33, 0x04, 0x00])
+      mockFetch.mockResolvedValueOnce(
+        new Response(payload, {
+          status: 200,
+          headers: { 'Content-Type': 'application/octet-stream' },
+        }),
+      )
+
+      const client = createClient()
+      const buf = await client.retrieveFileContent(123)
+
+      const [url, options] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://api.minimax.io/v1/files/retrieve_content?file_id=123')
+      expect(options.method).toBe('GET')
+      expect(options.headers.Authorization).toBe('Bearer test-api-key')
+      expect(options.headers['Content-Type']).toBeUndefined()
+
+      expect(Buffer.isBuffer(buf)).toBe(true)
+      expect(buf.equals(Buffer.from(payload))).toBe(true)
+    })
+
+    it('should surface API errors returned as JSON', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 1004, status_msg: 'Auth failed' },
+          trace_id: 'trace-binary-err',
+        }),
+      )
+
+      const client = createClient()
+      try {
+        await client.retrieveFileContent(123)
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxAuthError)
+        expect((e as MiniMaxAuthError).traceId).toBe('trace-binary-err')
+      }
+    })
+
+    it('should throw MiniMaxHttpError on HTTP error', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('Not Found', { status: 404, statusText: 'Not Found' }),
+      )
+
+      const client = createClient()
+      try {
+        await client.retrieveFileContent(999)
+        expect.unreachable('should have thrown')
+      } catch (e) {
+        expect(e).toBeInstanceOf(MiniMaxHttpError)
+        expect((e as MiniMaxHttpError).httpStatus).toBe(404)
+      }
+    })
+
+    it('should reject missing fileId', async () => {
+      const client = createClient()
+      await expect(
+        client.retrieveFileContent(undefined as unknown as number),
+      ).rejects.toThrow('"fileId" is required')
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('deleteFile', () => {
+    it('should POST with snake_case body and return fileId', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          file_id: 12345,
+        }),
+      )
+
+      const client = createClient()
+      const result = await client.deleteFile({ fileId: 12345, purpose: 't2a_async_input' })
+
+      const [url, options] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://api.minimax.io/v1/files/delete')
+      expect(options.method).toBe('POST')
+      expect(options.headers['Content-Type']).toBe('application/json')
+
+      const body = JSON.parse(options.body as string)
+      expect(body.file_id).toBe(12345)
+      expect(body.purpose).toBe('t2a_async_input')
+
+      expect(result.fileId).toBe(12345)
+    })
+
+    it('should accept delete-only purposes (t2a_async, video_generation)', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          file_id: 1,
+        }),
+      )
+
+      const client = createClient()
+      await client.deleteFile({ fileId: 1, purpose: 't2a_async' })
+      const body = JSON.parse(mockFetch.mock.calls[0]![1].body as string)
+      expect(body.purpose).toBe('t2a_async')
+    })
+
+    it('should throw on API error', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 1004, status_msg: 'Auth failed' },
+          file_id: 0,
+        }),
+      )
+
+      const client = createClient()
+      await expect(
+        client.deleteFile({ fileId: 1, purpose: 'voice_clone' }),
+      ).rejects.toThrow(MiniMaxAuthError)
+    })
+
+    it('should reject missing fileId', async () => {
+      const client = createClient()
+      await expect(
+        client.deleteFile({ purpose: 'voice_clone' } as unknown as Parameters<typeof client.deleteFile>[0]),
+      ).rejects.toThrow('"fileId" is required')
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('should reject missing purpose', async () => {
+      const client = createClient()
+      await expect(
+        client.deleteFile({ fileId: 1 } as unknown as Parameters<typeof client.deleteFile>[0]),
+      ).rejects.toThrow('"purpose" is required')
+      expect(mockFetch).not.toHaveBeenCalled()
     })
   })
 
