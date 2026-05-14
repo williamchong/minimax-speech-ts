@@ -327,6 +327,7 @@ describe('MiniMaxSpeech', () => {
     it('should reject word_streaming subtitleType in non-streaming synthesize', async () => {
       const client = createClient()
       await expect(
+        // @ts-expect-error — TS narrows subtitleType to exclude 'word_streaming' on synthesize; this tests the runtime guard for JS callers.
         client.synthesize({ text: 'Test', subtitleType: 'word_streaming' }),
       ).rejects.toThrow('"word_streaming" subtitle type is only valid in streaming mode')
       expect(mockFetch).not.toHaveBeenCalled()
@@ -597,6 +598,40 @@ describe('MiniMaxSpeech', () => {
       await expect(client.synthesizeStream({ text: 'test' })).rejects.toThrow('Response body is null')
     })
 
+    it('should resolve subtitle to undefined when the response stream errors mid-read', async () => {
+      const audioHex = Buffer.from('a').toString('hex')
+      const encoder = new TextEncoder()
+      let pulled = false
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!pulled) {
+            pulled = true
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ data: { audio: audioHex, status: 1 }, trace_id: 't' })}\n\n`))
+            return
+          }
+          throw new Error('network failure')
+        },
+      })
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+
+      const client = createClient()
+      const { audio, subtitle } = await client.synthesizeStream({
+        text: 'Test',
+        subtitleEnable: true,
+      })
+
+      const reader = audio.getReader()
+      await reader.read() // first chunk arrives
+      await expect(reader.read()).rejects.toThrow('network failure')
+      expect(await subtitle).toBeUndefined()
+    })
+
     it('should allow subtitleEnable and word_streaming subtitleType in streaming', async () => {
       const stream = makeSSEStream([
         { data: { audio: Buffer.from('c').toString('hex'), status: 1 }, trace_id: 't' },
@@ -620,6 +655,34 @@ describe('MiniMaxSpeech', () => {
       const body = JSON.parse(options.body as string)
       expect(body.subtitle_enable).toBe(true)
       expect(body.subtitle_type).toBe('word_streaming')
+    })
+
+    it('should resolve subtitle to undefined when consumer cancels the audio stream', async () => {
+      const audioHex = Buffer.from('a').toString('hex')
+      const stream = makeSSEStream([
+        { data: { audio: audioHex, status: 1 }, trace_id: 't' },
+        { data: { audio: audioHex, status: 1 }, trace_id: 't' },
+        { data: { audio: audioHex, status: 1 }, trace_id: 't' },
+      ])
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+      )
+
+      const client = createClient()
+      const { audio, subtitle } = await client.synthesizeStream({
+        text: 'Test',
+        subtitleEnable: true,
+      })
+
+      const reader = audio.getReader()
+      await reader.read() // consume one chunk
+      await reader.cancel('user cancelled')
+
+      expect(await subtitle).toBeUndefined()
     })
 
     it('should send streamOptions in body', async () => {

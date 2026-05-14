@@ -49,12 +49,14 @@ export interface SynthesizeRequest {
   voiceModify?: VoiceModify
   timbreWeights?: TimbreWeight[]
   subtitleEnable?: boolean
-  /** `word_streaming` is only valid in streaming mode. */
-  subtitleType?: SubtitleType
+  /** `word_streaming` is only valid in streaming mode — see `SynthesizeStreamRequest`. */
+  subtitleType?: Exclude<SubtitleType, 'word_streaming'>
   outputFormat?: 'url' | 'hex'
 }
 
-export interface SynthesizeStreamRequest extends Omit<SynthesizeRequest, 'outputFormat'> {
+export interface SynthesizeStreamRequest extends Omit<SynthesizeRequest, 'outputFormat' | 'subtitleType'> {
+  /** Streaming accepts all subtitle types including `word_streaming`. */
+  subtitleType?: SubtitleType
   streamOptions?: { excludeAggregatedAudio?: boolean }
 }
 
@@ -66,8 +68,10 @@ export interface ExtraInfo {
   wordCount: number
   invisibleCharacterRatio?: number
   usageCharacters: number
-  audioFormat: string
-  audioChannel: number
+  /** Present on t2a responses; absent from voice-clone preview synthesis extra_info. */
+  audioFormat?: string
+  /** Present on t2a responses; absent from voice-clone preview synthesis extra_info. */
+  audioChannel?: number
 }
 
 export interface SynthesizeResult {
@@ -87,10 +91,13 @@ export interface SynthesizeUrlResult {
 export interface SynthesizeStreamResult {
   audio: ReadableStream<Buffer>
   /**
-   * Resolves to the subtitle file URL once the audio stream finishes, or `undefined` if subtitles
-   * weren't enabled. Resolves to `undefined` (never rejects) when an API-level error chunk arrives.
-   * Will hang if the audio stream is cancelled by the consumer or aborted at the network layer
-   * before the final aggregated chunk arrives.
+   * Resolves to the subtitle file URL when subtitles were enabled and a final chunk arrived
+   * with one; `undefined` otherwise (subtitles disabled, stream ended early, API error, transport
+   * error, or consumer cancellation). Never rejects.
+   *
+   * **Important:** this promise only settles once the `audio` stream is being consumed. Awaiting
+   * `subtitle` before reading or cancelling `audio` will hang because nothing is pumping the
+   * underlying SSE source. Drain `audio` first (or in parallel via `Promise.all`).
    */
   subtitle: Promise<string | undefined>
 }
@@ -225,8 +232,8 @@ export interface RawExtraInfo {
   word_count: number
   invisible_character_ratio?: number
   usage_characters: number
-  audio_format: string
-  audio_channel: number
+  audio_format?: string
+  audio_channel?: number
 }
 
 export interface RawSynthesizeResponse {

@@ -142,7 +142,7 @@ const result = await client.synthesize({
     { voiceId: 'voice-2', weight: 0.5 },
   ],
   subtitleEnable: false,
-  subtitleType: 'sentence',        // 'sentence' | 'word' | 'word_streaming' — 'word_streaming' is streaming-only
+  subtitleType: 'sentence',        // 'sentence' | 'word' ('word_streaming' is streaming-only — use synthesizeStream)
   pronunciationDict: { tone: ['处理/(chǔ lǐ)'] },
 })
 
@@ -165,7 +165,9 @@ result.audio // string (URL)
 
 ### `synthesizeStream(request): Promise<SynthesizeStreamResult>`
 
-Streaming text-to-speech via SSE. Returns `{ audio, subtitle }` — a `ReadableStream<Buffer>` of audio chunks and a `Promise<string | undefined>` for the subtitle file URL (resolves when the stream ends).
+Streaming text-to-speech via SSE. Returns `{ audio, subtitle }` — a `ReadableStream<Buffer>` of audio chunks and a `Promise<string | undefined>` for the subtitle file URL.
+
+> **Drain `audio` first.** `subtitle` only settles once `audio` is being consumed (reading audio is what pumps the underlying SSE source). Awaiting `subtitle` before reading or cancelling `audio` will hang. Use `Promise.all([drainAudio, subtitle])` if you need both concurrently.
 
 WAV format is not supported in streaming mode.
 
@@ -208,7 +210,7 @@ task.usageCharacters  // number
 
 ### `querySynthesizeAsync(taskId): Promise<AsyncSynthesizeQueryResult>`
 
-Poll the status of an async synthesis task. The generated download URL is valid for **9 hours** after success — make sure to download the file within that window.
+Poll the status of an async synthesis task. On success you get a `fileId` — use the MiniMax File API to retrieve the audio. The synthesized file is only available for **9 hours** after success; retrieve and store it before then.
 
 ```ts
 const status = await client.querySynthesizeAsync(task.taskId)
