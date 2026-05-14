@@ -856,6 +856,39 @@ describe('MiniMaxSpeech', () => {
       expect(body.voice_setting.text_normalization).toBeUndefined()
     })
 
+    it('should strip subtitle/output/stream/timbre fields smuggled by JS callers', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          task_id: 1,
+          file_id: 1,
+          task_token: 't',
+          usage_characters: 1,
+        }),
+      )
+
+      const client = createClient()
+      // Cast to bypass the Omit on AsyncSynthesizeRequest — the test exercises the runtime strip
+      // that defends against JS callers smuggling these fields past TS.
+      await client.synthesizeAsync({
+        text: 'Hello',
+        voiceSetting: { voiceId: 'v' },
+        subtitleEnable: true,
+        subtitleType: 'word',
+        outputFormat: 'url',
+        streamOptions: { excludeAggregatedAudio: true },
+        timbreWeights: [{ voiceId: 'v', weight: 50 }],
+      } as unknown as Parameters<typeof client.synthesizeAsync>[0])
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const body = JSON.parse(options.body as string)
+      expect(body.subtitle_enable).toBeUndefined()
+      expect(body.subtitle_type).toBeUndefined()
+      expect(body.output_format).toBeUndefined()
+      expect(body.stream_options).toBeUndefined()
+      expect(body.timbre_weights).toBeUndefined()
+    })
+
     it('should send textFileId as text_file_id', async () => {
       mockFetch.mockResolvedValueOnce(
         makeJsonResponse({
@@ -944,6 +977,24 @@ describe('MiniMaxSpeech', () => {
 
       const [url] = mockFetch.mock.calls[0]!
       expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?GroupId=grp-1&task_id=42')
+    })
+
+    it('should accept a string taskId and URL-encode it', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeJsonResponse({
+          base_resp: { status_code: 0, status_msg: 'success' },
+          task_id: 95157322514444,
+          status: 'success',
+          file_id: 12345,
+        }),
+      )
+
+      const client = createClient()
+      const result = await client.querySynthesizeAsync('95157322514444')
+
+      const [url] = mockFetch.mock.calls[0]!
+      expect(url).toBe('https://api.minimax.io/v1/query/t2a_async_query_v2?task_id=95157322514444')
+      expect(result.fileId).toBe(12345)
     })
 
     it('should throw MiniMaxHttpError on HTTP error', async () => {

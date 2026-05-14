@@ -60,7 +60,11 @@ export interface SynthesizeStreamRequest extends Omit<SynthesizeRequest, 'output
   streamOptions?: { excludeAggregatedAudio?: boolean }
 }
 
-export interface ExtraInfo {
+/**
+ * Subset of extra_info returned by voice-clone preview synthesis.
+ * Lacks audioFormat / audioChannel — those are t2a-only (see {@link ExtraInfo}).
+ */
+export interface VoiceCloneExtraInfo {
   audioLength: number
   audioSampleRate: number
   audioSize: number
@@ -68,10 +72,11 @@ export interface ExtraInfo {
   wordCount: number
   invisibleCharacterRatio?: number
   usageCharacters: number
-  /** Present on t2a responses; absent from voice-clone preview synthesis extra_info. */
-  audioFormat?: string
-  /** Present on t2a responses; absent from voice-clone preview synthesis extra_info. */
-  audioChannel?: number
+}
+
+export interface ExtraInfo extends VoiceCloneExtraInfo {
+  audioFormat: string
+  audioChannel: number
 }
 
 export interface SynthesizeResult {
@@ -163,7 +168,7 @@ export interface VoiceCloneResult {
   demoAudio: string
   inputSensitive: { type: InputSensitiveType }
   /** Returned only when `text` and `model` are provided (preview synthesis was billed). */
-  extraInfo?: ExtraInfo
+  extraInfo?: VoiceCloneExtraInfo
 }
 
 // Voice design types
