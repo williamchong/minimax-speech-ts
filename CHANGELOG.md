@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 (2026-05-19)
+
+### Features
+
+- **`synthesizeStream` now returns `{ audio, subtitle, extraInfo, traceId }`** — the final aggregated (status-2) SSE chunk already carries top-level `extra_info` and `trace_id`, but the stream loop previously discarded the whole chunk after reading `subtitle_file`. `extraInfo` (parsed `ExtraInfo` — audio length, size, billable characters, …) and `traceId` are now exposed as `Promise<… | undefined>` with the same contract as `subtitle`: they settle on every completion path (status-2 chunk, normal end, API error, transport error, consumer cancel), never reject, and only settle once `audio` is being consumed. Purely additive — existing `{ audio, subtitle }` destructuring is unaffected.
+
+### Internal
+
+- Stream metadata resolution funnelled through a single `settleMeta()` helper so `subtitle`/`extraInfo`/`traceId` settle together; relies on idempotent promise resolution so a status-2-then-end sequence is a harmless no-op. Malformed `extra_info` is swallowed to `undefined` to preserve the never-reject guarantee.
+- `streamOptions` stays pure pass-through: `excludeAggregatedAudio` follows the MiniMax API default (`false`); callers opt into `true` to skip the redundant final-chunk audio re-transmit.
+- Test coverage added for the status-2 happy path, absent/malformed `extra_info`, no final chunk, and `stream_options` pass-through both ways. README and AGENTS.md updated.
+
 ## 0.4.0 (2026-05-14)
 
 ### Features
