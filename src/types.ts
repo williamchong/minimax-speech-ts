@@ -105,6 +105,23 @@ export interface SynthesizeStreamResult {
    * underlying SSE source. Drain `audio` first (or in parallel via `Promise.all`).
    */
   subtitle: Promise<string | undefined>
+  /**
+   * Resolves to the parsed `extra_info` (audio length, size, billable characters, etc.) carried
+   * by the final aggregated chunk; `undefined` if no final chunk arrived (stream ended early, API
+   * error, transport error, consumer cancellation) or its `extra_info` was absent/malformed.
+   * Never rejects.
+   *
+   * **Important:** like {@link subtitle}, this only settles once the `audio` stream is being
+   * consumed. Awaiting it before reading or cancelling `audio` will hang. Drain `audio` first
+   * (or in parallel via `Promise.all`).
+   */
+  extraInfo: Promise<ExtraInfo | undefined>
+  /**
+   * Resolves to the `trace_id` of the final aggregated chunk (used for MiniMax support /
+   * troubleshooting); `undefined` on the same early-completion paths as {@link extraInfo}.
+   * Never rejects. Same "consume `audio` first" caveat as {@link subtitle}.
+   */
+  traceId: Promise<string | undefined>
 }
 
 // Async T2A types

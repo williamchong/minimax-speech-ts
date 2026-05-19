@@ -552,6 +552,104 @@ describe('MiniMaxSpeech', () => {
       expect(chunks[0]!.toString()).toBe('chunk1')
     })
 
+    it('should resolve extraInfo and traceId from the final status-2 chunk', async () => {
+      const audioHex = Buffer.from('chunk1').toString('hex')
+
+      const stream = makeSSEStream([
+        { data: { audio: audioHex, status: 1 }, trace_id: 'trace-chunk' },
+        {
+          data: { audio: '', subtitle_file: 'https://example.com/s.json', status: 2 },
+          extra_info: { ...baseExtraInfo, audio_length: 4242 },
+          trace_id: 'trace-final',
+        },
+      ])
+
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      )
+
+      const client = createClient()
+      const { audio, subtitle, extraInfo, traceId } = await client.synthesizeStream({
+        text: 'Test',
+        subtitleEnable: true,
+      })
+
+      await drainStream(audio)
+
+      expect(await subtitle).toBe('https://example.com/s.json')
+      expect(await traceId).toBe('trace-final')
+      const info = await extraInfo
+      expect(info?.audioLength).toBe(4242)
+      expect(info?.audioFormat).toBe('mp3')
+      expect(info?.usageCharacters).toBe(10)
+    })
+
+    it('should not send stream_options unless excludeAggregatedAudio is provided', async () => {
+      const stream = makeSSEStream([{ data: { audio: '', status: 2 }, trace_id: 't' }])
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      )
+
+      const client = createClient()
+      await client.synthesizeStream({ text: 'Test' })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const body = JSON.parse(options.body as string)
+      expect(body.stream_options).toBeUndefined()
+    })
+
+    it('should forward an explicit excludeAggregatedAudio to the request body', async () => {
+      const stream = makeSSEStream([{ data: { audio: '', status: 2 }, trace_id: 't' }])
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      )
+
+      const client = createClient()
+      await client.synthesizeStream({
+        text: 'Test',
+        streamOptions: { excludeAggregatedAudio: true },
+      })
+
+      const [, options] = mockFetch.mock.calls[0]!
+      const body = JSON.parse(options.body as string)
+      expect(body.stream_options).toEqual({ exclude_aggregated_audio: true })
+    })
+
+    it('should resolve extraInfo/traceId to undefined when no status-2 chunk arrives', async () => {
+      const stream = makeSSEStream([
+        { data: { audio: Buffer.from('c').toString('hex'), status: 1 }, trace_id: 't' },
+      ])
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      )
+
+      const client = createClient()
+      const { audio, extraInfo, traceId } = await client.synthesizeStream({ text: 'Test' })
+
+      await drainStream(audio)
+
+      expect(await extraInfo).toBeUndefined()
+      expect(await traceId).toBeUndefined()
+    })
+
+    it('should resolve extraInfo to undefined but keep traceId when final chunk lacks extra_info', async () => {
+      const stream = makeSSEStream([
+        { data: { audio: Buffer.from('c').toString('hex'), status: 1 }, trace_id: 't1' },
+        { data: { audio: '', status: 2 }, trace_id: 'trace-final' },
+      ])
+      mockFetch.mockResolvedValueOnce(
+        new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      )
+
+      const client = createClient()
+      const { audio, extraInfo, traceId } = await client.synthesizeStream({ text: 'Test' })
+
+      await drainStream(audio)
+
+      expect(await extraInfo).toBeUndefined()
+      expect(await traceId).toBe('trace-final')
+    })
+
     it('should handle stream errors from API', async () => {
       const stream = makeSSEStream([
         {

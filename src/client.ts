@@ -385,21 +385,36 @@ export class MiniMaxSpeech {
       .getReader()
 
     let resolveSubtitle!: (url: string | undefined) => void
+    let resolveExtraInfo!: (info: ExtraInfo | undefined) => void
+    let resolveTraceId!: (id: string | undefined) => void
     const subtitle = new Promise<string | undefined>((resolve) => {
       resolveSubtitle = resolve
     })
+    const extraInfo = new Promise<ExtraInfo | undefined>((resolve) => {
+      resolveExtraInfo = resolve
+    })
+    const traceId = new Promise<string | undefined>((resolve) => {
+      resolveTraceId = resolve
+    })
+    // Settle all three metadata promises together. Promise resolution is idempotent, so the
+    // status-2 path can resolve with values and a later end/error/cancel call is a harmless no-op.
+    const settleMeta = (subtitleUrl?: string, info?: ExtraInfo, trace?: string): void => {
+      resolveSubtitle(subtitleUrl)
+      resolveExtraInfo(info)
+      resolveTraceId(trace)
+    }
 
-    // Build the audio ReadableStream by hand so we can settle `subtitle` on every
-    // completion path: status-2 chunk (with URL), normal end, API error, transport
-    // error, and consumer cancel. TransformStream's flush() doesn't run on the last
-    // two, which is what made the earlier pipeThrough version leak pending promises.
+    // Build the audio ReadableStream by hand so we can settle the metadata promises on every
+    // completion path: status-2 chunk (subtitle URL + extra_info + trace_id), normal end, API
+    // error, transport error, and consumer cancel. TransformStream's flush() doesn't run on the
+    // last two, which is what made the earlier pipeThrough version leak pending promises.
     const audio = new ReadableStream<Buffer>({
       async pull(controller) {
         try {
           for (;;) {
             const { done, value: event } = await sseReader.read()
             if (done) {
-              resolveSubtitle(undefined)
+              settleMeta()
               controller.close()
               return
             }
@@ -413,14 +428,25 @@ export class MiniMaxSpeech {
             }
 
             if (chunk.base_resp && chunk.base_resp.status_code !== 0) {
-              resolveSubtitle(undefined)
+              settleMeta()
               controller.error(createMiniMaxError(chunk.base_resp.status_code, chunk.base_resp.status_msg, chunk.trace_id))
               return
             }
 
-            // Final aggregated chunk carries subtitle_file URL when subtitleEnable was set.
+            // Status-2 is the only chunk carrying top-level extra_info/trace_id. Its audio is
+            // never enqueued (only status-1 is), so reading metadata here is safe regardless of
+            // whether the server included aggregated audio.
             if (chunk.data?.status === 2) {
-              resolveSubtitle(chunk.data.subtitle_file)
+              let parsed: ExtraInfo | undefined
+              if (chunk.extra_info) {
+                try {
+                  parsed = parseExtraInfo(chunk.extra_info)
+                } catch {
+                  // Malformed extra_info must not reject — these promises never do.
+                  parsed = undefined
+                }
+              }
+              settleMeta(chunk.data.subtitle_file, parsed, chunk.trace_id)
               continue
             }
             if (chunk.data?.audio && chunk.data.status === 1) {
@@ -429,17 +455,17 @@ export class MiniMaxSpeech {
             }
           }
         } catch (err) {
-          resolveSubtitle(undefined)
+          settleMeta()
           controller.error(err)
         }
       },
       async cancel(reason) {
-        resolveSubtitle(undefined)
+        settleMeta()
         await sseReader.cancel(reason)
       },
     })
 
-    return { audio, subtitle }
+    return { audio, subtitle, extraInfo, traceId }
   }
 
   async synthesizeAsync(request: AsyncSynthesizeRequest): Promise<AsyncSynthesizeResult> {

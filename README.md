@@ -165,18 +165,20 @@ result.audio // string (URL)
 
 ### `synthesizeStream(request): Promise<SynthesizeStreamResult>`
 
-Streaming text-to-speech via SSE. Returns `{ audio, subtitle }` — a `ReadableStream<Buffer>` of audio chunks and a `Promise<string | undefined>` for the subtitle file URL.
+Streaming text-to-speech via SSE. Returns `{ audio, subtitle, extraInfo, traceId }` — a `ReadableStream<Buffer>` of audio chunks plus three promises resolved from the final aggregated chunk: the subtitle file URL (`string | undefined`), the parsed `extraInfo` (`ExtraInfo | undefined` — audio length, size, billable characters, …), and the `traceId` (`string | undefined`) for MiniMax support.
 
-> **Drain `audio` first.** `subtitle` only settles once `audio` is being consumed (reading audio is what pumps the underlying SSE source). Awaiting `subtitle` before reading or cancelling `audio` will hang. Use `Promise.all([drainAudio, subtitle])` if you need both concurrently.
+> **Drain `audio` first.** `subtitle`, `extraInfo`, and `traceId` only settle once `audio` is being consumed (reading audio is what pumps the underlying SSE source). Awaiting them before reading or cancelling `audio` will hang. Use `Promise.all([drainAudio, extraInfo])` if you need both concurrently. None of them ever reject — they resolve to `undefined` on early end, API error, transport error, or cancellation.
+
+> `streamOptions.excludeAggregatedAudio` follows the MiniMax API default (`false` — the final chunk re-includes the full re-concatenated clip). That aggregated audio is never enqueued either way, so `extraInfo`/`traceId` are unaffected by this flag. Pass `{ excludeAggregatedAudio: true }` to skip the redundant re-transmit and save bandwidth.
 
 WAV format is not supported in streaming mode.
 
 ```ts
-const { audio, subtitle } = await client.synthesizeStream({
+const { audio, subtitle, extraInfo, traceId } = await client.synthesizeStream({
   text: 'Hello, streaming world!',
   voiceSetting: { voiceId: 'English_expressive_narrator' },
   audioSetting: { format: 'mp3' },
-  streamOptions: { excludeAggregatedAudio: true },
+  streamOptions: { excludeAggregatedAudio: true }, // optional — saves bandwidth
   subtitleEnable: true,                   // optional
   subtitleType: 'word_streaming',         // 'word_streaming' is streaming-only
 })
@@ -188,6 +190,8 @@ for await (const chunk of audio) {
 writer.end()
 
 const subtitleUrl = await subtitle  // undefined unless subtitleEnable was set
+const info = await extraInfo        // { audioLength, usageCharacters, … } or undefined
+const trace = await traceId         // undefined if no final chunk arrived
 ```
 
 ### `synthesizeAsync(request): Promise<AsyncSynthesizeResult>`

@@ -30,7 +30,7 @@ TypeScript client library for the MiniMax Speech Synthesis API. Single runtime d
 
 - **camelCase public API, snake_case wire format**: All request/response types use camelCase. `toSnakeCase()` converts outgoing bodies; response mapping is done manually per-method.
 - **Validation runs before fetch**: The `validate()` function takes `[boolean, string]` tuples. If the boolean is true, it throws `MiniMaxClientError`. This catches emotion/model incompatibility, WAV-in-streaming, missing required fields, and mutual exclusivity constraints.
-- **Streaming**: `synthesizeStream` returns `ReadableStream<Buffer>`. SSE events are parsed via `EventSourceParserStream`, then a `TransformStream` decodes hex audio chunks (status 1 = intermediate, status 2 = final/aggregated, skipped).
+- **Streaming**: `synthesizeStream` returns `{ audio: ReadableStream<Buffer>, subtitle, extraInfo, traceId }`. SSE events are parsed via `EventSourceParserStream`; a hand-built `ReadableStream` decodes hex audio from status-1 (intermediate) chunks and enqueues them. The status-2 (final/aggregated) chunk's audio is never enqueued, but its top-level `extra_info`/`trace_id`/`subtitle_file` are read and surface via the `extraInfo`/`traceId`/`subtitle` promises (settle on every completion path; never reject). `streamOptions` is pure pass-through — `excludeAggregatedAudio` follows the API default (`false`); callers opt into `true` to save bandwidth.
 - **Overloads**: `synthesize()` has overloads — `outputFormat: 'url'` returns `SynthesizeUrlResult` (audio as URL string), default returns `SynthesizeResult` (audio as Buffer). The specific overload must come first.
 
 ### Tests (`test/client.test.ts`)
